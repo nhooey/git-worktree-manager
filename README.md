@@ -146,6 +146,24 @@ The module sets nothing itself: the shell's startup evals what `env` prints, so 
 
 The floors are whole numbers so the plugin's shell hook can compare them without a parser. Leaving git in fish sets and unsets nothing; moving to another worktree replaces only the variables `env` set itself. In a repository whose dev shell also imports `flakeModules.default`, both loaders run `env` and print the same values, so the second changes nothing. `checks.home-manager-module` evaluates a configuration with every option on for Linux and macOS, with and without `sweep.apply`, compares the floor file, the settings and the sweep's command line with the options, and on the system it runs on builds the files and loads the direnv function and the fish hook in a Rust repository.
 
+## In Claude Code sessions
+
+`plugin/` is the Claude Code plugin `nix-worktrees-hooks`, built as `packages.<system>.hooks-plugin` and installed through agent-plugins-nixpkgs and managed settings. Its hooks call `worktrees` in every session, interactive or headless, and each does nothing and prints nothing when `worktrees` isn't on the `PATH`.
+
+| Event          | Does                                                                                                                                                                                                                            |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SessionStart` | appends `command -v worktrees >/dev/null 2>&1 && eval "$(worktrees env </dev/null)"` to `$CLAUDE_ENV_FILE`; starts `worktrees sweep --json` for the session's repository, with `--apply` when `config.json` has `sweep.apply` true |
+| `SubagentStop` | `worktrees clean <path> --apply` on the subagent's worktree, `.claude/worktrees/agent-<agent_id>` under the event's checkout or the main checkout, once `git worktree list` lists it and it is unlocked, or after 2 seconds        |
+| `SessionEnd`   | `worktrees clean <path> --apply` on the session's own worktree, when its `cwd` is one and not the main checkout                                                                                                                   |
+
+- **The environment line** runs before every Bash command, from the directory the command starts in, so a subagent in its own worktree builds into its own `CARGO_TARGET_DIR`.
+- **What the sweep kept:** each session's sweep saves its report under `~/.local/state/worktrees/session-sweep/`. The next session in the repository reads it and, at most once a day, puts one line into the session's context, such as "3 idle unmerged worktrees in this repository hold 4G".
+- **Never blocking:** the sweep and the cleans run detached, in their own process group, from `/`, so they outlive Claude Code, which gives a `SessionEnd` hook 1.5 seconds and kills a headless run's async hooks when it ends. A clean that refuses, as it does while the stopping session is still inside, is retried for up to 120 seconds.
+- **Always exit 0:** a failure goes to `~/.local/state/worktrees/hooks.log`, never to the session.
+- **jq and git** are store paths in the built plugin. Run from this checkout, as with `claude --plugin-dir plugin`, the scripts take them from the `PATH`.
+
+`checks.hooks-plugin` runs shellcheck over the built plugin's scripts and `tests/plugin/hooks.bats`, with a stub `worktrees`, over temporary repositories.
+
 ## Provisioning
 
 The first `env` in a worktree, or `worktrees provision`, writes `REPO` and `WORKTREE` under the build root, copies `.claude/settings.local.json` from the main checkout when the worktree has none (copied, not linked, so an approval given in a worktree never widens the checkout's), runs `direnv allow` when the worktree's `.envrc` is byte for byte the checkout's, and writes `worktrees-provisioned` in the worktree's git directory. It is idempotent, and a failure in it never stops `env`'s exports: the reason goes to standard error.
@@ -192,6 +210,7 @@ A folder `git clean` would delete whole that holds a kept file, or a nested repo
 
 - `~/.local/state/worktrees/clean.log`: every path `clean` deletes, before it goes.
 - `~/.local/state/worktrees/sweep.log`: each sweep's verdicts, removals, orphans, the Cargo cap, and once a day per repository the unmerged worktrees; the Home Manager module's scheduled sweep appends its report here too.
+- `~/.local/state/worktrees/hooks.log`: what the Claude Code plugin's hooks couldn't do, one line each.
 
 ## Development
 
@@ -199,7 +218,8 @@ Enter the dev shell with `nix develop` (or direnv). Then:
 
 - `worktrees`: the program, from this checkout.
 - `tests`: the core's and the commands' tests, `python3 -m unittest`; without Nix, `python3 -m unittest discover --start-directory worktrees/tests --top-level-directory .`.
-- `check`: `nix flake check`: formatting and lints (treefmt with nixfmt and ruff), the package build, the tests, `checks.dev-shell`, the dev shell module's test, and `checks.home-manager-module`, the Home Manager module's.
+- `check`: `nix flake check`: formatting and lints (treefmt with nixfmt and ruff), the package build, the tests, `checks.dev-shell`, the dev shell module's test, `checks.home-manager-module`, the Home Manager module's, and `checks.hooks-plugin`, the plugin's.
+- `bats tests/plugin/hooks.bats`: the plugin's hook tests alone, against `plugin/`, with `bats` and `jq` on the `PATH`.
 
 The program is pure functions in `worktrees/core.py`, a thin shell around git, `ps`, `lsof`, `df`, `du` and the file system in `worktrees/system.py` and `worktrees/repo.py`, and the commands in `worktrees/cli.py`. The command tests build temporary git repositories with `HOME` and the XDG folders inside them; nothing is removed outside them.
 

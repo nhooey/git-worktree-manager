@@ -4,8 +4,11 @@ nix-worktrees holds everything about agent worktrees: the `worktrees`
 program, the flake module for dev shells (`flake-module.nix`, exported as
 `flakeModules.default` and tested by `tests/dev-shell/`), the Home Manager
 module (`home-manager/`, exported as `homeManagerModules.default` and
-tested by `tests/home-manager/`), and later the Claude Code plugin whose hooks clean and sweep worktrees and keep
-agents' builds above a disk floor. `README.md` describes how they behave.
+tested by `tests/home-manager/`), and the Claude Code plugin (`plugin/`,
+exported as `packages.<system>.hooks-plugin` and tested by
+`tests/plugin/hooks.bats`) whose hooks load, clean and sweep worktrees.
+Its scripts are bash 3.2, macOS's `/bin/bash`, thin callers of the
+program, and exit 0 whatever happens. `README.md` describes how they behave.
 
 ## The program
 
