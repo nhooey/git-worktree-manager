@@ -91,6 +91,9 @@
               pkgs.ps
               pkgs.coreutils
             ];
+
+            # The disk floor hook's df: see packages.hooks-plugin.
+            floorDf = if pkgs.stdenv.hostPlatform.isDarwin then "/bin/df" else lib.getExe' pkgs.coreutils "df";
           in
           {
             packages = {
@@ -137,7 +140,10 @@
               default = config.packages.worktrees;
 
               # The Claude Code plugin `nix-worktrees-hooks`: plugin/ with
-              # its scripts' jq and git as store paths. The same derivation
+              # its scripts' jq and git as store paths, the disk floor hook
+              # run by dash and its df the system's on macOS, which start
+              # in half the time of /bin/sh and coreutils' df there and keep
+              # it under 10 ms before every Bash command. The same derivation
               # as agent-plugins-nixpkgs' `lib.mkClaudePlugin`, name and
               # version from the manifest, `passthru.claudePluginName` and
               # `passthru.version` for its `mkMarketplace`; built here since
@@ -160,6 +166,11 @@
                     substituteInPlace $out/scripts/hook-lib.sh \
                       --replace-fail 'WT_JQ=jq' 'WT_JQ=${lib.getExe pkgs.jq}' \
                       --replace-fail 'WT_GIT=git' 'WT_GIT=${lib.getExe pkgs.git}'
+                    substituteInPlace $out/scripts/disk-floor.sh \
+                      --replace-fail 'WT_JQ=jq' 'WT_JQ=${lib.getExe pkgs.jq}' \
+                      --replace-fail 'WORKTREES_FLOOR_DF:-df}' 'WORKTREES_FLOOR_DF:-${floorDf}}'
+                    substituteInPlace $out/hooks/hooks.json \
+                      --replace-fail '"command": "sh ' '"command": "${lib.getExe pkgs.dash} '
                   '';
             };
 
@@ -168,13 +179,19 @@
 
               # The built plugin's hook scripts: shellcheck, then
               # tests/plugin/hooks.bats with a stub `worktrees` over temporary
-              # repositories, which also checks hooks.json and the manifest.
+              # repositories, which also checks hooks.json and the manifest,
+              # and tests/plugin/disk-floor.bats with a stub df, run by dash
+              # as hooks.json runs it. Its run-time test, 10 ms a call when
+              # run alone, is held to 50 ms here, since the other checks
+              # build beside it and every process start slows with them.
               hooks-plugin =
                 pkgs.runCommand "worktrees-hooks-plugin-check"
                   {
                     nativeBuildInputs = [
                       pkgs.bash
                       pkgs.bats
+                      pkgs.coreutils
+                      pkgs.gawk
                       pkgs.git
                       pkgs.jq
                       pkgs.shellcheck
@@ -185,6 +202,8 @@
                     export TMPDIR=$PWD/tmp
                     mkdir -p "$TMPDIR"
                     PLUGIN_ROOT=${config.packages.hooks-plugin} bats ${./tests/plugin}/hooks.bats
+                    PLUGIN_ROOT=${config.packages.hooks-plugin} DISK_FLOOR_SH=${lib.getExe pkgs.dash} \
+                      DISK_FLOOR_MAX_US=50000 bats ${./tests/plugin}/disk-floor.bats
                     touch $out
                   '';
 

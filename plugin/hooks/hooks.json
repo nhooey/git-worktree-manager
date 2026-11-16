@@ -1,6 +1,18 @@
 {
-  "description": "Hooks of nix-worktrees, each a thin caller of the worktrees program; the clean and sweep work runs detached, so no hook holds up the session.",
+  "description": "Hooks of nix-worktrees: a disk floor check before every Bash command, and thin callers of the worktrees program whose clean and sweep work runs detached, so no hook holds up the session.",
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/disk-floor.sh\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
     "SessionStart": [
       {
         "hooks": [

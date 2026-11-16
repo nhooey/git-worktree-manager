@@ -1,7 +1,7 @@
 {
   "name": "nix-worktrees-hooks",
   "version": "0.1.0",
-  "description": "Hooks that call the worktrees program in every session: SessionStart loads the worktree environment into every Bash command and sweeps the repository in the background, and SubagentStop and SessionEnd clean a finished agent's worktree. Each does nothing when worktrees isn't on the PATH.",
+  "description": "Hooks that call the worktrees program in every session: SessionStart loads the worktree environment into every Bash command and sweeps the repository in the background, and SubagentStop and SessionEnd clean a finished agent's worktree; each does nothing when worktrees isn't on the PATH. PreToolUse on Bash refuses builds below the disk's build floor and all but cleanup below its cleanup floor.",
   "author": { "name": "Neil Hooey" },
   "homepage": "https://github.com/nhooey/nix-worktrees",
   "repository": "https://github.com/nhooey/nix-worktrees"

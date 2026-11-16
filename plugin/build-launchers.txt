@@ -1,0 +1,31 @@
+# The commands that start a build, read by scripts/disk-floor.sh.
+#
+# One extended regular expression per line, matched against the start of
+# each command of a Bash call's pipeline or list, after its leading variable
+# assignments, wrappers (env, time, nice, nohup, exec, command, sudo) and the
+# directory of its first word; a match must end the word there. Blank lines
+# and lines starting with `#` are skipped.
+cargo
+rustc
+swift
+xcodebuild
+nix (build|flake check|develop|run|shell)
+nix-build
+(npm|pnpm|yarn|bun) (install|ci|run|build|test)
+uv (sync|run|pip)
+pip3? install
+gradlew?
+mvn
+make
+cmake --build
+ninja
+meson compile
+go (build|test|install)
+dotnet (build|test|publish)
+clojure
+clj
+lein
+shadow-cljs
+bb
+docker build
+(tofu|terraform) init

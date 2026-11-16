@@ -89,15 +89,21 @@ ENV_LINE='command -v worktrees >/dev/null 2>&1 && eval "$(worktrees env </dev/nu
 
 # hooks.json ----------------------------------------------------------------------
 
-@test "hooks.json: every hook runs one of the plugin's scripts, which parses as bash" {
+@test "hooks.json: every hook runs one of the plugin's scripts, which parses in its shell" {
   run jq -r '.hooks[][].hooks[] | .command' "$PLUGIN_ROOT/hooks/hooks.json"
   [ "$status" -eq 0 ]
-  [ "${#lines[@]}" -eq 3 ]
+  [ "${#lines[@]}" -eq 4 ]
   for command in "${lines[@]}"; do
-    [[ $command =~ ^bash\ \"\$\{CLAUDE_PLUGIN_ROOT\}/scripts/([a-z-]+\.sh)\"$ ]]
-    bash -n "$PLUGIN_ROOT/scripts/${BASH_REMATCH[1]}"
+    [[ $command =~ ^(bash|sh|/nix/store/[^ ]+/bin/dash)\ \"\$\{CLAUDE_PLUGIN_ROOT\}/scripts/([a-z-]+\.sh)\"$ ]]
+    "${BASH_REMATCH[1]}" -n "$PLUGIN_ROOT/scripts/${BASH_REMATCH[2]}"
   done
   jq -e '.name and .version' "$PLUGIN_ROOT/.claude-plugin/plugin.json"
+}
+
+@test "hooks.json: the disk floor runs before every Bash command, within 10 s" {
+  jq -e '.hooks.PreToolUse | length == 1 and .[0].matcher == "Bash"
+    and (.[0].hooks[0] | (.command | endswith("/scripts/disk-floor.sh\"")) and .timeout == 10)' \
+    "$PLUGIN_ROOT/hooks/hooks.json"
 }
 
 @test "hooks.json: SubagentStop and SessionEnd are async with a 120 s timeout" {
