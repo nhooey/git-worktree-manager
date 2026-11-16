@@ -135,10 +135,58 @@
                 };
               };
               default = config.packages.worktrees;
+
+              # The Claude Code plugin `nix-worktrees-hooks`: plugin/ with
+              # its scripts' jq and git as store paths. The same derivation
+              # as agent-plugins-nixpkgs' `lib.mkClaudePlugin`, name and
+              # version from the manifest, `passthru.claudePluginName` and
+              # `passthru.version` for its `mkMarketplace`; built here since
+              # agent-plugins-nixpkgs takes this flake as an input, and an
+              # input back would be a cycle.
+              hooks-plugin =
+                let
+                  manifest = lib.importJSON ./plugin/.claude-plugin/plugin.json;
+                in
+                pkgs.runCommand "claude-plugin-${manifest.name}-${manifest.version}"
+                  {
+                    passthru = {
+                      claudePluginName = manifest.name;
+                      inherit (manifest) version;
+                    };
+                  }
+                  ''
+                    cp -r ${./plugin} $out
+                    chmod -R u+w $out
+                    substituteInPlace $out/scripts/hook-lib.sh \
+                      --replace-fail 'WT_JQ=jq' 'WT_JQ=${lib.getExe pkgs.jq}' \
+                      --replace-fail 'WT_GIT=git' 'WT_GIT=${lib.getExe pkgs.git}'
+                  '';
             };
 
             checks = {
               package = config.packages.worktrees;
+
+              # The built plugin's hook scripts: shellcheck, then
+              # tests/plugin/hooks.bats with a stub `worktrees` over temporary
+              # repositories, which also checks hooks.json and the manifest.
+              hooks-plugin =
+                pkgs.runCommand "worktrees-hooks-plugin-check"
+                  {
+                    nativeBuildInputs = [
+                      pkgs.bash
+                      pkgs.bats
+                      pkgs.git
+                      pkgs.jq
+                      pkgs.shellcheck
+                    ];
+                  }
+                  ''
+                    shellcheck -x -P SCRIPTDIR ${config.packages.hooks-plugin}/scripts/*.sh
+                    export TMPDIR=$PWD/tmp
+                    mkdir -p "$TMPDIR"
+                    PLUGIN_ROOT=${config.packages.hooks-plugin} bats ${./tests/plugin}/hooks.bats
+                    touch $out
+                  '';
 
               # The unit tests of the core and the command tests, which build
               # temporary git repositories and run `python3 -m worktrees`.
