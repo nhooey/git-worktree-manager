@@ -1,0 +1,14 @@
+# shellcheck shell=bash
+# worktrees: the shared build caches of the checkout or worktree this
+# .envrc loads in, as `worktrees env` prints them. Written by nix-worktrees'
+# Home Manager module; an .envrc calls it as `use worktrees`, and anything
+# after it, such as `--languages rust,python`, goes to `worktrees env`.
+#
+# Outside git `worktrees env` prints nothing, and when it fails its reason
+# goes to standard error and the .envrc loads without the variables.
+use_worktrees() {
+	local exports
+	if exports=$(@worktrees@ env "$@"); then
+		eval "$exports"
+	fi
+}

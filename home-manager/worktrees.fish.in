@@ -1,0 +1,20 @@
+# worktrees: on entering a git checkout or worktree, its shared build caches,
+# as `worktrees env --shell fish` prints them. Written by nix-worktrees' Home
+# Manager module into fish's conf.d.
+#
+# The program runs only when the directory's git root changes, so moving
+# around inside one worktree costs one `git rev-parse`. Leaving git sets
+# nothing and unsets nothing, and moving to another worktree is the
+# program's to handle: it replaces the variables it set itself and leaves
+# alone the ones it didn't.
+status is-interactive; or exit
+
+function __worktrees_env --on-variable PWD --description 'Load the worktree build caches when the git root changes'
+    set -l root (command git rev-parse --show-toplevel 2>/dev/null)
+    test "$root" = "$__worktrees_root"; and return
+    set -g __worktrees_root $root
+    test -n "$root"; or return
+    @worktrees@ env --shell fish | source
+end
+
+__worktrees_env

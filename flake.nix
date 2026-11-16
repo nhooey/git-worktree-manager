@@ -52,6 +52,13 @@
           inherit withSystem;
         };
 
+        # For a Home Manager configuration: `programs.worktrees`, the program
+        # on the PATH, the direnv and fish loaders, the scheduled sweep and
+        # the disk floors.
+        flake.homeManagerModules.default = flake-parts-lib.importApply ./home-manager/module.nix {
+          inherit withSystem;
+        };
+
         # numtide/devshell installs its launcher as $DEVSHELL_DIR/bin/<name>,
         # so the name must not be a command's: inside this devshell it would
         # shadow the real command.
