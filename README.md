@@ -81,6 +81,38 @@ ${XDG_CACHE_HOME:-$HOME/.cache}/worktree-builds/
 
 `--languages` also takes `java`, `kotlin`, `typescript`, `ts`, `js`, `cpp`, `c++`, `csharp`, `opentofu`, `tofu` and `babashka`.
 
+## In a repository's dev shell
+
+`flakeModules.default` is a flake-parts module for [numtide devshell](https://github.com/numtide/devshell). A repository that imports it and lists its languages gets, in its dev shell, `worktrees` as a command in the menu's `worktrees` category, and, each time the shell loads, the variables `worktrees env --languages <the list>` prints for the worktree it loads in. So every worktree of the repository shares the same `CARGO_BUILD_BUILD_DIR` and has its own `CARGO_TARGET_DIR`, both outside it, and a new worktree is provisioned the first time its dev shell loads.
+
+```nix
+{
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    flake-parts.url = "github:hercules-ci/flake-parts";
+    devshell.url = "github:numtide/devshell";
+    nix-worktrees.url = "github:nhooey/nix-worktrees";
+  };
+
+  outputs = inputs@{ flake-parts, ... }:
+    flake-parts.lib.mkFlake { inherit inputs; } {
+      imports = [
+        inputs.devshell.flakeModule # or agent-skill-flake's devshellSkills, which brings it
+        inputs.nix-worktrees.flakeModules.default
+      ];
+      perSystem.worktrees.languages = [ "rust" "python" ];
+    };
+}
+```
+
+| Option                         | Default                                | Means                                                                                         |
+| ------------------------------ | -------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `perSystem.worktrees.languages` | `null`                                 | the languages in the table above, aliases included; `null` lets `env` detect them from the worktree's files |
+| `perSystem.worktrees.package`   | nix-worktrees' `packages.<system>.worktrees` | the program the shell runs and offers                                                   |
+| `perSystem.worktrees.devshell`  | `"default"`                            | which of `devshells` to set up                                                                |
+
+The module sets nothing itself: the shell's startup evals what `env` prints, so a variable already set when the shell loads is left alone, outside git nothing is set, and when `env` fails its reason goes to standard error and the shell loads without the variables. The repository must import numtide devshell's flake module itself, since importing it twice declares `devshells` twice. A `nix build` or `nix flake check` runs in the sandbox with none of these variables and shares work through the store instead. `tests/dev-shell/` is a dev shell built this way, for Rust and Python, and `checks.dev-shell` loads it in a repository and a second worktree of it.
+
 ## Provisioning
 
 The first `env` in a worktree, or `worktrees provision`, writes `REPO` and `WORKTREE` under the build root, copies `.claude/settings.local.json` from the main checkout when the worktree has none (copied, not linked, so an approval given in a worktree never widens the checkout's), runs `direnv allow` when the worktree's `.envrc` is byte for byte the checkout's, and writes `worktrees-provisioned` in the worktree's git directory. It is idempotent, and a failure in it never stops `env`'s exports: the reason goes to standard error.
@@ -134,7 +166,7 @@ Enter the dev shell with `nix develop` (or direnv). Then:
 
 - `worktrees`: the program, from this checkout.
 - `tests`: the core's and the commands' tests, `python3 -m unittest`; without Nix, `python3 -m unittest discover --start-directory worktrees/tests --top-level-directory .`.
-- `check`: `nix flake check`: formatting and lints (treefmt with nixfmt and ruff), the package build and the tests.
+- `check`: `nix flake check`: formatting and lints (treefmt with nixfmt and ruff), the package build, the tests and `checks.dev-shell`, the dev shell module's test.
 
 The program is pure functions in `worktrees/core.py`, a thin shell around git, `ps`, `lsof`, `df`, `du` and the file system in `worktrees/system.py` and `worktrees/repo.py`, and the commands in `worktrees/cli.py`. The command tests build temporary git repositories with `HOME` and the XDG folders inside them; nothing is removed outside them.
 
