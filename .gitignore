@@ -1,0 +1,14 @@
+/result
+/result-*
+/.direnv/
+
+# Project-scope skill installs from the dev shell's reconcile startup hook.
+# Symlinks into the Nix store, not source.
+/.agents/skills/
+/.claude/skills/
+/.claude/settings.local.json
+
+__pycache__/
+*.egg-info/
+/build/
+/dist/
