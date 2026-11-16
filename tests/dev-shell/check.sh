@@ -14,8 +14,9 @@
 # Rust and Python variables, the same CARGO_BUILD_BUILD_DIR and different
 # CARGO_TARGET_DIRs, all outside both worktrees; an unlisted language's
 # variable is not set; a variable set beforehand keeps its value; the second
-# worktree is provisioned once its dev shell has loaded; and outside git
-# nothing is set. `nix flake check` runs it as `checks.dev-shell`.
+# worktree is provisioned once its dev shell has loaded; below the build
+# floor it warns and still loads, and above the floors it doesn't warn; and
+# outside git nothing is set. `nix flake check` runs it as `checks.dev-shell`.
 set -euo pipefail
 
 entry=$1
@@ -96,6 +97,23 @@ if [[ -e "$(git -C "$second" rev-parse --absolute-git-dir)/worktrees-provisioned
   pass "the second worktree is provisioned"
 else
   fail "the second worktree has no provisioning marker"
+fi
+
+unset WORKTREES_FLOOR_BUILD_GB WORKTREES_FLOOR_CLEANUP_ONLY_GB
+low=$(cd "$main" && WORKTREES_FLOOR_BUILD_GB=999999999 WORKTREES_FLOOR_CLEANUP_ONLY_GB=1 \
+  "$entry" --prj-root "$main" bash -c 'echo loaded' 2>&1) || fail "the dev shell failed below the build floor"
+if [[ $low == *"below the 999999999 GB build floor"* && $low == *loaded* ]]; then
+  pass "below the build floor, the dev shell warns and loads"
+else
+  fail "below the build floor, the dev shell printed: $low"
+fi
+
+high=$(cd "$main" && WORKTREES_FLOOR_BUILD_GB=1 WORKTREES_FLOOR_CLEANUP_ONLY_GB=1 \
+  "$entry" --prj-root "$main" bash -c 'echo loaded' 2>&1)
+if [[ $high != *floor* && $high == *loaded* ]]; then
+  pass "above the floors, the dev shell doesn't warn"
+else
+  fail "above the floors, the dev shell printed: $high"
 fi
 
 mkdir "$scratch/plain"

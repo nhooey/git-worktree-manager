@@ -6,7 +6,8 @@
 # variables, leaving a variable already set alone and provisioning a new
 # worktree are all the program's. It only runs `worktrees env` and evals
 # what it prints, so a login shell, direnv and an agent session with no dev
-# shell get the same values.
+# shell get the same values. Its disk floor warning is the plugin's own
+# hook script, run with `--warn`.
 #
 # Called through `importApply` by this repository's flake.nix, so the
 # default package is this flake's own `worktrees`.
@@ -42,6 +43,25 @@ in
           description = "The `worktrees` program the dev shell runs and offers as a command.";
         };
 
+        diskFloorWarning = mkOption {
+          type = types.bool;
+          default = true;
+          description = ''
+            Whether the dev shell, when it loads, warns on standard error
+            that the volume of its root is below a disk floor, with the
+            check the plugin's disk floor hook makes before every agent's
+            Bash command. It warns and never fails, since a shell that won't
+            start can't be used to clean up.
+          '';
+        };
+
+        hooksPlugin = mkOption {
+          type = types.package;
+          default = withSystem system ({ config, ... }: config.packages.hooks-plugin);
+          defaultText = lib.literalMD "nix-worktrees' own `packages.<system>.hooks-plugin`";
+          description = "The Claude Code plugin whose `scripts/disk-floor.sh --warn` makes the dev shell's disk floor check.";
+        };
+
         devshell = mkOption {
           type = types.str;
           default = "default";
@@ -52,7 +72,7 @@ in
   );
 
   config.perSystem =
-    { config, ... }:
+    { config, pkgs, ... }:
     let
       cfg = config.worktrees;
       exe = lib.getExe cfg.package;
@@ -79,6 +99,13 @@ in
           fi
           unset __worktrees_env
         '';
+
+        # The disk floors as a warning; the script exits 0 whatever it finds.
+        devshell.startup.worktrees-disk-floor = lib.mkIf cfg.diskFloorWarning (
+          lib.noDepEntry ''
+            ${lib.getExe pkgs.dash} ${cfg.hooksPlugin}/scripts/disk-floor.sh --warn "$PRJ_ROOT" || :
+          ''
+        );
       };
     };
 }
