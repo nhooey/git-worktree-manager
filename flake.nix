@@ -51,15 +51,115 @@
       };
 
       perSystem =
-        { pkgs, ... }:
         {
+          pkgs,
+          lib,
+          config,
+          ...
+        }:
+        let
+          # What the program runs besides Python: git, lsof for the processes
+          # inside a worktree, ps (adv_cmds on macOS, procps elsewhere; a Nix
+          # builder can't run macOS's setuid /bin/ps), and df and du.
+          runtimeInputs = [
+            pkgs.git
+            pkgs.lsof
+            pkgs.ps
+            pkgs.coreutils
+          ];
+        in
+        {
+          packages = {
+            worktrees = pkgs.python3Packages.buildPythonApplication {
+              pname = "worktrees";
+              # The one version, `__version__` in worktrees/__init__.py.
+              version = lib.pipe ./worktrees/__init__.py [
+                builtins.readFile
+                (lib.splitString "\n")
+                (lib.findFirst (lib.hasPrefix "__version__ = ") "")
+                (lib.removePrefix "__version__ = \"")
+                (lib.removeSuffix "\"")
+              ];
+              pyproject = true;
+              src = lib.fileset.toSource {
+                root = ./.;
+                fileset = lib.fileset.unions [
+                  ./pyproject.toml
+                  ./README.md
+                  ./worktrees
+                ];
+              };
+              build-system = [ pkgs.python3Packages.setuptools ];
+              # git first, for `rev-parse --path-format`; the rest after the
+              # user's own, so the system's ps and lsof win on macOS.
+              makeWrapperArgs = [
+                "--prefix"
+                "PATH"
+                ":"
+                (lib.makeBinPath [ pkgs.git ])
+                "--suffix"
+                "PATH"
+                ":"
+                (lib.makeBinPath runtimeInputs)
+              ];
+              # The tests run in `checks.tests`, over temporary repositories.
+              doCheck = false;
+              meta = {
+                description = "A git worktree's shared build caches, provisioning, cleanup and removal";
+                license = lib.licenses.asl20;
+                mainProgram = "worktrees";
+              };
+            };
+            default = config.packages.worktrees;
+          };
+
+          checks = {
+            package = config.packages.worktrees;
+
+            # The unit tests of the core and the command tests, which build
+            # temporary git repositories and run `python3 -m worktrees`.
+            tests =
+              pkgs.runCommand "worktrees-tests"
+                {
+                  nativeBuildInputs = [ pkgs.python3 ] ++ runtimeInputs;
+                }
+                ''
+                  cp -r ${./.} src
+                  chmod -R u+w src
+                  cd src
+                  export HOME=$TMPDIR/home
+                  mkdir -p "$HOME"
+                  python3 -m unittest discover --start-directory worktrees/tests --top-level-directory . --verbose
+                  touch $out
+                '';
+          };
+
           treefmt = {
             projectRootFile = "flake.nix";
-            programs.nixfmt.enable = true;
+            programs = {
+              nixfmt.enable = true;
+              ruff-format.enable = true;
+              ruff-check.enable = true;
+            };
           };
 
           devshells.default = {
-            packages = [ pkgs.git ];
+            packages = [ pkgs.python3 ] ++ runtimeInputs;
+
+            commands = [
+              {
+                category = "worktrees";
+                name = "worktrees";
+                help = "The worktrees program, from this checkout";
+                command = ''PYTHONPATH="$PRJ_ROOT''${PYTHONPATH:+:$PYTHONPATH}" exec python3 -m worktrees "$@"'';
+              }
+              {
+                category = "dev";
+                name = "tests";
+                help = "Run the core and command tests (python3 -m unittest)";
+                command = ''cd "$PRJ_ROOT" && exec python3 -m unittest discover --start-directory worktrees/tests --top-level-directory . "$@"'';
+              }
+            ];
           };
         };
     };
