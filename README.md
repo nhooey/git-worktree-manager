@@ -110,8 +110,10 @@ ${XDG_CACHE_HOME:-$HOME/.cache}/worktree-builds/
 | `perSystem.worktrees.languages` | `null`                                 | the languages in the table above, aliases included; `null` lets `env` detect them from the worktree's files |
 | `perSystem.worktrees.package`   | nix-worktrees' `packages.<system>.worktrees` | the program the shell runs and offers                                                   |
 | `perSystem.worktrees.devshell`  | `"default"`                            | which of `devshells` to set up                                                                |
+| `perSystem.worktrees.diskFloorWarning` | `true`                          | warn on standard error, when the shell loads, that its root's volume is below a [disk floor](#the-disk-floor-hook) |
+| `perSystem.worktrees.hooksPlugin` | nix-worktrees' `packages.<system>.hooks-plugin` | the plugin whose `scripts/disk-floor.sh --warn` makes that check                   |
 
-The module sets nothing itself: the shell's startup evals what `env` prints, so a variable already set when the shell loads is left alone, outside git nothing is set, and when `env` fails its reason goes to standard error and the shell loads without the variables. The repository must import numtide devshell's flake module itself, since importing it twice declares `devshells` twice. A `nix build` or `nix flake check` runs in the sandbox with none of these variables and shares work through the store instead. `tests/dev-shell/` is a dev shell built this way, for Rust and Python, and `checks.dev-shell` loads it in a repository and a second worktree of it.
+The module sets nothing itself: the shell's startup evals what `env` prints, so a variable already set when the shell loads is left alone, outside git nothing is set, and when `env` fails its reason goes to standard error and the shell loads without the variables. The disk floor check is the plugin's hook script run with `--warn`: it only warns, since a shell that won't start can't be used to clean up. The repository must import numtide devshell's flake module itself, since importing it twice declares `devshells` twice. A `nix build` or `nix flake check` runs in the sandbox with none of these variables and shares work through the store instead. `tests/dev-shell/` is a dev shell built this way, for Rust and Python, and `checks.dev-shell` loads it in a repository and a second worktree of it.
 
 ## In a Home Manager configuration
 
@@ -148,10 +150,11 @@ The floors are whole numbers so the plugin's shell hook can compare them without
 
 ## In Claude Code sessions
 
-`plugin/` is the Claude Code plugin `nix-worktrees-hooks`, built as `packages.<system>.hooks-plugin` and installed through agent-plugins-nixpkgs and managed settings. Its hooks call `worktrees` in every session, interactive or headless, and each does nothing and prints nothing when `worktrees` isn't on the `PATH`.
+`plugin/` is the Claude Code plugin `nix-worktrees-hooks`, built as `packages.<system>.hooks-plugin` and installed through agent-plugins-nixpkgs and managed settings. Its session hooks call `worktrees` in every session, interactive or headless, and each does nothing and prints nothing when `worktrees` isn't on the `PATH`; its disk floor hook needs no program.
 
 | Event          | Does                                                                                                                                                                                                                            |
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PreToolUse` on `Bash` | denies a build below the build floor, and everything but reading and cleaning up below the cleanup floor: [the disk floor hook](#the-disk-floor-hook)                                                                  |
 | `SessionStart` | appends `command -v worktrees >/dev/null 2>&1 && eval "$(worktrees env </dev/null)"` to `$CLAUDE_ENV_FILE`; starts `worktrees sweep --json` for the session's repository, with `--apply` when `config.json` has `sweep.apply` true |
 | `SubagentStop` | `worktrees clean <path> --apply` on the subagent's worktree, `.claude/worktrees/agent-<agent_id>` under the event's checkout or the main checkout, once `git worktree list` lists it and it is unlocked, or after 2 seconds        |
 | `SessionEnd`   | `worktrees clean <path> --apply` on the session's own worktree, when its `cwd` is one and not the main checkout                                                                                                                   |
@@ -162,7 +165,25 @@ The floors are whole numbers so the plugin's shell hook can compare them without
 - **Always exit 0:** a failure goes to `~/.local/state/worktrees/hooks.log`, never to the session.
 - **jq and git** are store paths in the built plugin. Run from this checkout, as with `claude --plugin-dir plugin`, the scripts take them from the `PATH`.
 
-`checks.hooks-plugin` runs shellcheck over the built plugin's scripts and `tests/plugin/hooks.bats`, with a stub `worktrees`, over temporary repositories.
+`checks.hooks-plugin` runs shellcheck over the built plugin's scripts, `tests/plugin/hooks.bats`, with a stub `worktrees`, over temporary repositories, and `tests/plugin/disk-floor.bats`, with a stub `df`.
+
+### The disk floor hook
+
+`scripts/disk-floor.sh` runs before every Bash command an agent runs, and compares the free space on the command's working directory, from `df -Pk`, with [the disk floors](#the-disk-floors).
+
+| Free space            | The hook                                                                                                      |
+| --------------------- | ------------------------------------------------------------------------------------------------------------- |
+| at or above the build floor (70 GB) | allows everything                                                                               |
+| below the build floor | denies a command whose pipeline or list holds a build, any command matching a line of `plugin/build-launchers.txt` |
+| below the cleanup floor (35 GB) | denies every command except `git`, `df`, `du`, `ls`, `cat`, `rm`, `cd` and `worktrees`             |
+
+- **The denial** says how much is free and names the floor, then "Run `worktrees sweep --apply` and `worktrees status --all`, or ask the user.", so the agent's next step is cleanup.
+- **`build-launchers.txt`** holds one extended regular expression per line, such as `cargo`, `nix (build|flake check|develop|run|shell)` and `(npm|pnpm|yarn|bun) (install|ci|run|build|test)`. Each command of the line is matched after its leading `VAR=value` assignments, its wrappers (`env`, `time`, `nice`, `nohup`, `exec`, `command`, `sudo`) and its first word's directory, so `FOO=1 /usr/bin/make` is `make`. Below the cleanup floor the list doesn't matter.
+- **Fast:** a POSIX shell script run by dash, starting only df above the floors, and jq and awk as well below one. Over 100 calls on an Apple silicon Mac at a load average of 10 to 12, it took 7 to 10 ms each above the floors and 20 to 45 ms below the build floor, nearly all of it starting processes. `tests/plugin/disk-floor.bats` fails above 10 ms a call, or `DISK_FLOOR_MAX_US`; `checks.hooks-plugin` sets that to 50 ms, since the other checks build beside it.
+- **Fails open:** when the event, `df`, the floor file or a floor can't be read, it allows the command and writes why to `~/.local/state/worktrees/hooks.log`.
+- **The dev shell** runs the same script as `disk-floor.sh --warn <root>`, which warns and exits 0.
+- **Hook modes, later:** the denial is decided in one function, `denial_reason`, so that a later change can put it behind agent-plugins-nixpkgs' `hook_mode` helper (`off`, `remind`, `deny`) once that helper is packaged. Until then the hook always denies.
+- **Not the Nix daemon:** builds the daemon runs for others aren't stopped here; Nix's own `min-free` collection is the backstop there.
 
 ## Provisioning
 
@@ -204,7 +225,7 @@ A folder `git clean` would delete whole that holds a kept file, or a nested repo
 
 ### The disk floors
 
-`status` compares the free space with two floors, read from `WORKTREES_FLOOR_BUILD_GB` and `WORKTREES_FLOOR_CLEANUP_ONLY_GB`, else from the same `KEY=value` lines in `${XDG_CONFIG_HOME:-~/.config}/worktrees/floor`, else 70 and 35 GB.
+`status`, [the disk floor hook](#the-disk-floor-hook) and the dev shell's warning compare the free space with two floors, read from `WORKTREES_FLOOR_BUILD_GB` and `WORKTREES_FLOOR_CLEANUP_ONLY_GB`, else from the same `KEY=value` lines in `${XDG_CONFIG_HOME:-~/.config}/worktrees/floor`, else 70 and 35 GB, of 10^9 bytes.
 
 ## Logs
 
