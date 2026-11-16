@@ -23,6 +23,13 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    # Only for checks.home-manager-module, which evaluates the Home Manager
+    # module in test configurations; the module itself needs no input.
+    home-manager = {
+      url = "github:nix-community/home-manager";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     treefmt-nix = {
       url = "github:numtide/treefmt-nix";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -180,6 +187,15 @@
                     bash ${./tests/dev-shell/check.sh} ${devshellDir}/entrypoint "$PWD/scratch"
                     touch $out
                   '';
+
+              # Home Manager configurations with every option on, evaluated
+              # for Linux and macOS with and without sweep.apply; this
+              # system's files are built and its loaders run.
+              home-manager-module = import ./tests/home-manager {
+                inherit pkgs lib;
+                inherit (inputs) nixpkgs home-manager;
+                module = inputs.self.homeManagerModules.default;
+              };
             };
 
             treefmt = {
