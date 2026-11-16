@@ -1,0 +1,33 @@
+{
+  "roots": ["~/git"],
+  "scan_depth": 4,
+  "cargo_cap_gb": 60,
+  "transcript_idle_minutes": 30,
+  "sweep_lock_stale_minutes": 60,
+  "fetch_timeout_seconds": 60,
+  "keep": [
+    ".env",
+    ".env.*",
+    ".envrc",
+    ".envrc.local",
+    "*.local.*",
+    ".claude/settings.local.json",
+    ".idea/",
+    "*.iml",
+    ".superpowers/",
+    "HANDOFF.md",
+    "*.tfplan",
+    "tfplan*",
+    "*.tfstate*",
+    ".xtdb/",
+    ".nrepl-port",
+    "*-workspace/",
+    ".gstack/",
+    "reports/",
+    ".worktree-keep",
+    ".worktreeinclude"
+  ],
+  "sweep": {
+    "apply": false
+  }
+}
