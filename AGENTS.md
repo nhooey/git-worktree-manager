@@ -2,8 +2,9 @@
 
 nix-worktrees holds everything about agent worktrees: the `worktrees`
 program, the flake module for dev shells (`flake-module.nix`, exported as
-`flakeModules.default` and tested by `tests/dev-shell/`), and later the Home Manager module
-and the Claude Code plugin whose hooks clean and sweep worktrees and keep
+`flakeModules.default` and tested by `tests/dev-shell/`), the Home Manager
+module (`home-manager/`, exported as `homeManagerModules.default` and
+tested by `tests/home-manager/`), and later the Claude Code plugin whose hooks clean and sweep worktrees and keep
 agents' builds above a disk floor. `README.md` describes how they behave.
 
 ## The program

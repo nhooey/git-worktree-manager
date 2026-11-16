@@ -113,6 +113,39 @@ ${XDG_CACHE_HOME:-$HOME/.cache}/worktree-builds/
 
 The module sets nothing itself: the shell's startup evals what `env` prints, so a variable already set when the shell loads is left alone, outside git nothing is set, and when `env` fails its reason goes to standard error and the shell loads without the variables. The repository must import numtide devshell's flake module itself, since importing it twice declares `devshells` twice. A `nix build` or `nix flake check` runs in the sandbox with none of these variables and shares work through the store instead. `tests/dev-shell/` is a dev shell built this way, for Rust and Python, and `checks.dev-shell` loads it in a repository and a second worktree of it.
 
+## In a Home Manager configuration
+
+`homeManagerModules.default` sets up `worktrees` for a user, in every repository, flake or not: the program on the `PATH`, the environment loaded on entering a worktree, an hourly sweep, and the disk floors agents' builds stop at.
+
+```nix
+{
+  imports = [ inputs.nix-worktrees.homeManagerModules.default ];
+  programs.worktrees = {
+    enable = true;
+    cloneRoots = [ "~/git/github/nhooey" ];
+    direnv.enable = true;
+    fish.enable = true;
+    sweep.enable = true;
+  };
+}
+```
+
+| Option                       | Default                                      | Means                                                                                                                                                                                  |
+| ---------------------------- | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `enable`                     | `false`                                      | puts `worktrees` on the `PATH` and writes `config.json` and `floor` under `~/.config/worktrees/`                                                                                       |
+| `package`                    | nix-worktrees' `packages.<system>.worktrees` | the program installed and run by the loaders and the sweep                                                                                                                            |
+| `cloneRoots`                 | none: it must be set                         | the folders `--all` looks under, written to `config.json` as `roots`                                                                                                                   |
+| `direnv.enable`              | `false`                                      | `use_worktrees` in `~/.config/direnv/lib/worktrees.sh`, which evals `worktrees env`; an `.envrc` calls it as `use worktrees`, and any arguments go to `env`, such as `--languages rust` |
+| `fish.enable`                | `false`                                      | a function on `PWD` in `~/.config/fish/conf.d/worktrees.fish` that sources `worktrees env --shell fish` in interactive shells when the git root changes                               |
+| `sweep.enable`               | `false`                                      | `worktrees sweep --all` every `sweep.interval`: a launchd agent on macOS, a systemd user timer on Linux, appending to `~/.local/state/worktrees/sweep.log`                             |
+| `sweep.apply`                | `false`                                      | adds `--apply` to the scheduled sweep, and is written to `config.json` as `sweep.apply` for the plugin's sweep                                                                         |
+| `sweep.interval`             | `3600`                                       | seconds between sweeps                                                                                                                                                                 |
+| `sweep.cargoCapGB`           | `60`                                         | written to `config.json` as `cargo_cap_gb`                                                                                                                                             |
+| `floor.buildGB`              | `70`                                         | written to `floor` as `WORKTREES_FLOOR_BUILD_GB`                                                                                                                                       |
+| `floor.cleanupOnlyGB`        | `35`                                         | written to `floor` as `WORKTREES_FLOOR_CLEANUP_ONLY_GB`; must not be above `floor.buildGB`                                                                                             |
+
+The floors are whole numbers so the plugin's shell hook can compare them without a parser. Leaving git in fish sets and unsets nothing; moving to another worktree replaces only the variables `env` set itself. In a repository whose dev shell also imports `flakeModules.default`, both loaders run `env` and print the same values, so the second changes nothing. `checks.home-manager-module` evaluates a configuration with every option on for Linux and macOS, with and without `sweep.apply`, compares the floor file, the settings and the sweep's command line with the options, and on the system it runs on builds the files and loads the direnv function and the fish hook in a Rust repository.
+
 ## Provisioning
 
 The first `env` in a worktree, or `worktrees provision`, writes `REPO` and `WORKTREE` under the build root, copies `.claude/settings.local.json` from the main checkout when the worktree has none (copied, not linked, so an approval given in a worktree never widens the checkout's), runs `direnv allow` when the worktree's `.envrc` is byte for byte the checkout's, and writes `worktrees-provisioned` in the worktree's git directory. It is idempotent, and a failure in it never stops `env`'s exports: the reason goes to standard error.
@@ -158,7 +191,7 @@ A folder `git clean` would delete whole that holds a kept file, or a nested repo
 ## Logs
 
 - `~/.local/state/worktrees/clean.log`: every path `clean` deletes, before it goes.
-- `~/.local/state/worktrees/sweep.log`: each sweep's verdicts, removals, orphans, the Cargo cap, and once a day per repository the unmerged worktrees.
+- `~/.local/state/worktrees/sweep.log`: each sweep's verdicts, removals, orphans, the Cargo cap, and once a day per repository the unmerged worktrees; the Home Manager module's scheduled sweep appends its report here too.
 
 ## Development
 
@@ -166,7 +199,7 @@ Enter the dev shell with `nix develop` (or direnv). Then:
 
 - `worktrees`: the program, from this checkout.
 - `tests`: the core's and the commands' tests, `python3 -m unittest`; without Nix, `python3 -m unittest discover --start-directory worktrees/tests --top-level-directory .`.
-- `check`: `nix flake check`: formatting and lints (treefmt with nixfmt and ruff), the package build, the tests and `checks.dev-shell`, the dev shell module's test.
+- `check`: `nix flake check`: formatting and lints (treefmt with nixfmt and ruff), the package build, the tests, `checks.dev-shell`, the dev shell module's test, and `checks.home-manager-module`, the Home Manager module's.
 
 The program is pure functions in `worktrees/core.py`, a thin shell around git, `ps`, `lsof`, `df`, `du` and the file system in `worktrees/system.py` and `worktrees/repo.py`, and the commands in `worktrees/cli.py`. The command tests build temporary git repositories with `HOME` and the XDG folders inside them; nothing is removed outside them.
 
