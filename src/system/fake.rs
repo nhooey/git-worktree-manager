@@ -215,6 +215,19 @@ impl Fake {
                 .any(|key| key != path && key.starts_with(path))
     }
 
+    /// The longest volume mount holding `path`: its place among the mounts,
+    /// which is its id, and its free bytes.
+    fn mount(&self, path: &Path) -> Result<(usize, u64), Failure> {
+        let path = self.absolute(path);
+        self.volumes
+            .iter()
+            .enumerate()
+            .filter(|(_, (mount, _))| path.starts_with(mount))
+            .max_by_key(|(_, (mount, _))| mount.components().count())
+            .map(|(index, (_, free))| (index, *free))
+            .ok_or_else(|| Failure::unreadable(format!("{}: no volume", path.display())))
+    }
+
     fn answer(&self, key: &CommandKey) -> Result<Completed, Failure> {
         self.git.get(key).cloned().ok_or_else(|| {
             Failure::unreadable(format!(
@@ -341,13 +354,11 @@ impl System for Fake {
     }
 
     fn free_bytes(&self, path: &Path) -> Result<u64, Failure> {
-        let path = self.absolute(path);
-        self.volumes
-            .iter()
-            .filter(|(mount, _)| path.starts_with(mount))
-            .max_by_key(|(mount, _)| mount.components().count())
-            .map(|(_, free)| *free)
-            .ok_or_else(|| Failure::unreadable(format!("{}: no volume", path.display())))
+        self.mount(path).map(|(_, free)| free)
+    }
+
+    fn volume(&self, path: &Path) -> Result<u64, Failure> {
+        self.mount(path).map(|(index, _)| index as u64)
     }
 
     fn git_act(&mut self, dir: &Path, args: &[OsString]) -> Result<Completed, Failure> {

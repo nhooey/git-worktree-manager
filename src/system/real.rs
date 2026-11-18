@@ -3,6 +3,7 @@
 use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::io::{self, Read, Write};
+use std::os::unix::fs::MetadataExt;
 use std::os::unix::process::{CommandExt, ExitStatusExt};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -229,6 +230,12 @@ impl System for Real {
         rustix::fs::statvfs(path)
             .map(|stats| stats.f_bavail.saturating_mul(stats.f_frsize))
             .map_err(|error| unreadable(&error.into(), path))
+    }
+
+    fn volume(&self, path: &Path) -> Result<u64, Failure> {
+        fs::metadata(path)
+            .map(|meta| meta.dev())
+            .map_err(|error| unreadable(&error, path))
     }
 
     fn git_act(&mut self, dir: &Path, args: &[OsString]) -> Result<Completed, Failure> {

@@ -162,6 +162,9 @@ pub trait System {
     /// Bytes free to an unprivileged user on the volume holding `path`.
     fn free_bytes(&self, path: &Path) -> Result<u64, Failure>;
 
+    /// An id of the volume holding `path`, the same for every path on it.
+    fn volume(&self, path: &Path) -> Result<u64, Failure>;
+
     // Acts --------------------------------------------------------------------
 
     /// `git` in `dir`, for a write.
