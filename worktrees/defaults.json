@@ -1,4 +1,5 @@
 {
+  "fetch_timeout_seconds": 60,
   "keep": [
     ".env",
     ".env.*",
@@ -20,5 +21,10 @@
     "reports/",
     ".worktree-keep",
     ".worktreeinclude"
-  ]
+  ],
+  "settings": {
+    "sweep": "report",
+    "idle": "1h",
+    "lockReport": "1d"
+  }
 }

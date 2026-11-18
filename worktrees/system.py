@@ -1,24 +1,26 @@
-"""The thin shell of `worktrees`: git and the file system.
+"""The thin shell of `worktrees`: git, ps, du and the file system.
 
 Each function here runs one command or touches one path and returns plain
-values for `worktrees.core` to decide on. Every git command runs with
-`--no-optional-locks`, so reading a worktree's status never rewrites its
-index.
+values for `worktrees.core` and `worktrees.rules` to decide on. Every git
+command runs with `--no-optional-locks`, so reading a worktree's status
+never rewrites its index, whose time the idle rule reads.
 """
 
 from __future__ import annotations
 
 # json, shutil and datetime are imported where used: `worktrees env` runs on
 # every directory change and loads neither.
+import contextlib
 import os
 import subprocess
 import sys
 import time
-from typing import Dict, Mapping, Optional, Sequence, Tuple
+from typing import Dict, Iterator, Mapping, Optional, Sequence, Tuple
 
 from . import core
 
 GIT_ENV = {"GIT_TERMINAL_PROMPT": "0", "LC_ALL": "C"}
+LOG_LINE_LIMIT = 4000
 
 
 class CommandFailed(Exception):
@@ -188,6 +190,72 @@ def warn(message: str) -> None:
     sys.stderr.write("worktrees: {}\n".format(message))
 
 
+# The log ---------------------------------------------------------------------
+
+
+def events_path(state_dir: str) -> str:
+    return os.path.join(state_dir, "events.jsonl")
+
+
+def append_event(state_dir: str, record: Mapping) -> None:
+    """One JSON line, in one `write` to a file opened with `O_APPEND`, under 4 KB."""
+    import json
+
+    full = {**record, "pid": os.getpid()}
+    line = json.dumps(full, sort_keys=True, separators=(",", ":"))
+    fitted = (
+        line
+        if len(line.encode()) < LOG_LINE_LIMIT
+        else json.dumps(
+            {k: v for k, v in full.items() if not isinstance(v, (list, dict))},
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+    )
+    os.makedirs(state_dir, exist_ok=True)
+    fd = os.open(events_path(state_dir), os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
+    try:
+        os.write(fd, (fitted + "\n").encode())
+    finally:
+        os.close(fd)
+
+
+def read_events(state_dir: str) -> Tuple[Dict, ...]:
+    """The log's records; a line that isn't a JSON object is skipped."""
+    import json
+
+    def parse(line: str) -> Optional[Dict]:
+        try:
+            value = json.loads(line)
+        except ValueError:
+            return None
+        return value if isinstance(value, dict) else None
+
+    text = read_text(events_path(state_dir)) or ""
+    return tuple(r for r in (parse(line) for line in text.splitlines() if line.strip()) if r)
+
+
+@contextlib.contextmanager
+def sweep_lock(state_dir: str) -> Iterator[bool]:
+    """`fcntl.flock` on `sweep.lock`, without blocking; yields whether it was taken.
+
+    The operating system drops it when the process dies, so it never goes stale.
+    """
+    import fcntl
+
+    os.makedirs(state_dir, exist_ok=True)
+    fd = os.open(os.path.join(state_dir, "sweep.lock"), os.O_RDWR | os.O_CREAT, 0o644)
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            taken = True
+        except OSError:
+            taken = False
+        yield taken
+    finally:
+        os.close(fd)
+
+
 # Configuration -----------------------------------------------------------------
 
 
@@ -253,7 +321,31 @@ def remove_tree(path: str, inside: str) -> bool:
     return False
 
 
+def disk_usage(path: str) -> Optional[int]:
+    """Bytes on disk under `path`, from `du -sk`."""
+    if not os.path.exists(path):
+        return 0
+    result = run(("du", "-sk", path), check=False)
+    first = result.stdout.split()
+    return int(first[0]) * 1024 if first and first[0].isdigit() else None
+
+
 # Processes ---------------------------------------------------------------------
+
+
+def process_start(pid: int) -> Optional[float]:
+    """When process `pid` started, from `ps -o lstart= -p <pid>`; None when none runs."""
+    from . import rules
+
+    # In UTC, so the answer doesn't hang on which time zone `ps` and Python
+    # each find: in a build sandbox they can differ.
+    result = run(
+        ("ps", "-o", "lstart=", "-p", str(pid)),
+        check=False,
+        extra_env={"LC_ALL": "C", "TZ": "UTC0"},
+    )
+    text = result.stdout.strip()
+    return rules.parse_lstart(text, utc=True) if result.returncode == 0 and text else None
 
 
 def claude_projects(env: Mapping[str, str]) -> str:

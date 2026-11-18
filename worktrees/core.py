@@ -68,6 +68,11 @@ def repo_build_root(env: Mapping[str, str], common_dir: str) -> str:
     return posixpath.join(builds_top(env), repo_key(common_dir))
 
 
+def archive_top(env: Mapping[str, str]) -> str:
+    """`~/backups/git-archive`: one bare repository of archives per project, `<owner>/<repo>.git`."""
+    return posixpath.join(env.get("HOME", ""), "backups", "git-archive")
+
+
 def repo_state_dir(env: Mapping[str, str], common_dir: str) -> str:
     """`${XDG_STATE_HOME:-~/.local/state}/worktrees/<repo>-<hash8>`: the log and the sweep's files."""
     return posixpath.join(state_home(env), "worktrees", repo_key(common_dir))

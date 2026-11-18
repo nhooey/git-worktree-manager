@@ -6,4 +6,8 @@
 export HOME=$TMPDIR/home
 mkdir -p "$HOME"
 "${worktrees:?}" --help > /dev/null
+git init --quiet repo
+cd repo || exit
+"${worktrees:?}" sweep --dry-run --json > report.json
+grep -q '"dry_run": true' report.json
 touch "${out:?}"
