@@ -227,7 +227,7 @@ fn worktree(
 /// compared by identity, not by name, which a case-insensitive volume
 /// lets differ.
 fn working(folder: &Path, git_dir: &Path, common_dir: &Path) -> Result<gix::Repository, String> {
-    let opened = gix::open(folder).map_err(|e| e.to_string())?;
+    let opened = crate::locate::open(folder).map_err(|e| e.to_string())?;
     let at = |path: &Path| folder.join(path);
     if !same_folder(&at(opened.common_dir()), common_dir) {
         Err(format!(

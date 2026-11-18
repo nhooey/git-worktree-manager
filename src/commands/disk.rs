@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use crate::cli::{Format, FormatArg, RepositoryArg};
 use crate::commands::{Status, print_json};
 use crate::disk::{self, FloorsFile, Measured};
-use crate::locate::{Located, locate};
+use crate::locate::{Located, Reach, locate};
 use crate::model::ids::ErrorCode;
 use crate::names;
 use crate::system::{Failure, System};
@@ -29,7 +29,7 @@ pub fn run(args: &Args, system: &mut impl System) -> Result<Status, Failure> {
             .as_deref()
             .unwrap_or(Path::new(".")),
     )?;
-    let located = locate(system, &here)?.ok_or_else(|| {
+    let located = locate(system, &here, Reach::Upward)?.ok_or_else(|| {
         Failure::new(
             ErrorCode::NotARepository,
             format!("{} is not in a repository", here.display()),

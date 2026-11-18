@@ -64,6 +64,32 @@ fn test_a_landed_worktree_and_its_branch_end_without_the_idle_test() {
 }
 
 #[test]
+fn test_finish_run_inside_the_worktree_finishes_it() {
+    let s = Sandbox::new();
+    let repo = s.cloned();
+    let landed = s.add_worktree(&repo, "landed");
+    finish(&s, &landed, &[&landed], 0);
+    assert!(!exists(&landed));
+    assert!(!has_branch(&s, &repo, "landed"));
+}
+
+#[test]
+fn test_finish_with_git_dir_naming_the_worktree_finishes_it() {
+    let s = Sandbox::new();
+    let repo = s.cloned();
+    let landed = s.add_worktree(&repo, "landed");
+    let git_dir = join(&repo, ".git/worktrees/landed");
+    let ran = s.run(
+        &["finish", &landed, "--format", "json"],
+        Some(&repo),
+        &[("GIT_DIR", &git_dir)],
+    );
+    assert_eq!(ran.code, 0, "{}{}", ran.stderr, ran.stdout);
+    assert!(!exists(&landed));
+    assert!(!has_branch(&s, &repo, "landed"));
+}
+
+#[test]
 fn test_a_dry_run_finish_changes_nothing() {
     let s = Sandbox::new();
     let repo = s.cloned();

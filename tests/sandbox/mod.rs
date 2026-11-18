@@ -81,7 +81,9 @@ impl Sandbox {
         let tmp = real(&dir.path().to_string_lossy());
         let home = join(&tmp, "home");
         fs::create_dir_all(&home).expect("HOME");
-        let gitconfig = join(&tmp, "gitconfig");
+        // Git and the program both read the user's configuration here,
+        // under the sandbox's own HOME.
+        let gitconfig = join(&home, ".gitconfig");
         fs::write(
             &gitconfig,
             "[user]\n\tname = Test\n\temail = test@example.invalid\n\
@@ -100,8 +102,6 @@ impl Sandbox {
             ("XDG_CACHE_HOME", join(&tmp, "cache")),
             ("XDG_STATE_HOME", join(&tmp, "state")),
             ("XDG_CONFIG_HOME", join(&tmp, "config")),
-            ("GIT_CONFIG_GLOBAL", gitconfig),
-            ("GIT_CONFIG_NOSYSTEM", "1".to_owned()),
             ("TMPDIR", tmp.clone()),
         ]
         .into_iter()

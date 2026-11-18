@@ -15,7 +15,7 @@ use gix::glob::wildmatch;
 use serde::Serialize;
 
 use crate::environment::Environment;
-use crate::locate::locate;
+use crate::locate::{Reach, locate};
 use crate::model::ids::ErrorCode;
 use crate::names;
 use crate::system::{Failure, FileKind, System};
@@ -458,14 +458,14 @@ pub fn place(system: &impl System, path: &Path) -> Result<Place, Failure> {
             format!("{} is not in {what}", path.display()),
         )
     };
-    let worktree = locate(system, path)?
+    let worktree = locate(system, path, Reach::Upward)?
         .ok_or_else(|| not_in("a repository"))?
         .worktree
         .ok_or_else(|| not_in("a worktree"))?;
     let failed = |error: &dyn std::fmt::Display| {
         Failure::unreadable(format!("{}: {error}", worktree.display()))
     };
-    let repository = gix::open(&worktree).map_err(|e| failed(&e))?;
+    let repository = crate::locate::open(&worktree).map_err(|e| failed(&e))?;
     let own = repository.worktree();
     let main = own.as_ref().is_none_or(|own| own.is_main());
     let lock = own.filter(|own| own.is_locked()).map(|own| {

@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
+use crate::locate::Reach;
 use crate::model::ids::DefaultSource;
 use crate::system::{Failure, System};
 
@@ -16,6 +17,8 @@ pub struct Target {
     /// The default branch to take when `refs/remotes/origin/HEAD` names
     /// none, each with where it came from, the first first.
     pub default_branches: Vec<(DefaultSource, String)>,
+    /// Where its repository may be: around the path, or only at it.
+    pub reach: Reach,
 }
 
 /// Where the repositories come from.
@@ -53,17 +56,18 @@ pub fn targets(
 ) -> Result<Vec<Target>, Failure> {
     let current_dir = system.current_dir()?;
     let option = default_branch.map(|branch| (DefaultSource::Option, branch.to_owned()));
-    let target = |path: &Path, manifest: Option<&str>| Target {
+    let target = |path: &Path, manifest: Option<&str>, reach| Target {
         path: crate::system::normal_path(path, &current_dir),
         default_branches: manifest
             .map(|branch| (DefaultSource::Manifest, branch.to_owned()))
             .into_iter()
             .chain(option.clone())
             .collect(),
+        reach,
     };
     match source {
-        Source::Here => Ok(vec![target(&current_dir, None)]),
-        Source::Repository(path) => Ok(vec![target(path, None)]),
+        Source::Here => Ok(vec![target(&current_dir, None, Reach::Upward)]),
+        Source::Repository(path) => Ok(vec![target(path, None, Reach::Upward)]),
         Source::Manifest { file, root } => {
             let bytes = system
                 .read_file(file)?
@@ -73,7 +77,10 @@ pub fn targets(
             let base = root.map_or_else(|| current_dir.clone(), |root| current_dir.join(root));
             Ok(entries
                 .iter()
-                .map(|entry| target(&base.join(&entry.path), entry.default_branch.as_deref()))
+                .map(|entry| {
+                    let branch = entry.default_branch.as_deref();
+                    target(&base.join(&entry.path), branch, Reach::Here)
+                })
                 .collect())
         }
     }
@@ -101,7 +108,8 @@ mod tests {
             targets(&system(), Source::Here, None),
             Ok(vec![Target {
                 path: "/work".into(),
-                default_branches: vec![]
+                default_branches: vec![],
+                reach: Reach::Upward,
             }])
         );
         assert_eq!(
@@ -112,7 +120,8 @@ mod tests {
             ),
             Ok(vec![Target {
                 path: "/app".into(),
-                default_branches: vec![(DefaultSource::Option, "main".to_owned())]
+                default_branches: vec![(DefaultSource::Option, "main".to_owned())],
+                reach: Reach::Upward,
             }])
         );
     }
@@ -131,11 +140,13 @@ mod tests {
                     default_branches: vec![
                         (DefaultSource::Manifest, "trunk".to_owned()),
                         (DefaultSource::Option, "main".to_owned()),
-                    ]
+                    ],
+                    reach: Reach::Here,
                 },
                 Target {
                     path: "/abs/lib".into(),
-                    default_branches: vec![(DefaultSource::Option, "main".to_owned())]
+                    default_branches: vec![(DefaultSource::Option, "main".to_owned())],
+                    reach: Reach::Here,
                 },
             ])
         );

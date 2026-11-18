@@ -239,11 +239,10 @@ fn find(
     });
     let (facts, settings) = match read {
         Ok(read) => read,
-        Err(failure) if failure.code == ErrorCode::NotARepository && manifest => {
-            return Ok(problem(ProblemCode::Skipped, failure));
+        Err(failure) => {
+            let found = report::problem(&target.path, report::read_problem(failure, manifest)?);
+            return Ok(Found::Problem(Box::new(found)));
         }
-        Err(failure) if failure.code == ErrorCode::NotARepository => return Err(failure),
-        Err(failure) => return Ok(problem(ProblemCode::Unreadable, failure)),
     };
     let plan = rules::prune::keep_unreadable_heads(rules::plan(&facts, &settings, now), &facts);
     let head_archives = rules::prune::prune_archives(&plan, &facts, now);
@@ -418,16 +417,18 @@ fn sweep_target(
         report: report::problem(&target.path, Note::new(code, detail)),
         did: Did::Nothing,
     };
-    let common_dir = match locate(system, &target.path) {
-        Ok(Some(located)) => located.common_dir,
-        Ok(None) => {
+    let located = locate(system, &target.path, target.reach).and_then(|located| {
+        located.ok_or_else(|| {
             let detail = format!("{} is not in a git repository", target.path.display());
-            return match manifest {
-                true => Ok(problem(ProblemCode::Skipped, detail)),
-                false => Err(Failure::new(ErrorCode::NotARepository, detail)),
-            };
+            Failure::new(ErrorCode::NotARepository, detail)
+        })
+    });
+    let common_dir = match located {
+        Ok(located) => located.common_dir,
+        Err(failure) => {
+            let found = report::read_problem(failure, manifest)?;
+            return Ok(problem(found.code, found.detail));
         }
-        Err(failure) => return Ok(problem(ProblemCode::Unreadable, failure.detail)),
     };
     let state = match state_dir(system, &common_dir) {
         Ok(state) => state,
@@ -484,22 +485,21 @@ fn under_lock<S: System>(
 }
 
 /// The sweep's lock on the repository at `repository`, whose state folder
-/// is `state`, and whether another sweep held it, in which case it was
-/// waited for after saying so once.
+/// is `state`, waited for after saying so once when another sweep holds it.
 pub fn wait_for_lock<S: System>(
     system: &mut S,
     state: &Path,
     repository: &Path,
-) -> Result<(S::Held, bool), Failure> {
+) -> Result<S::Held, Failure> {
     let lock = state.join(SWEEP_LOCK_FILE);
     match system.lock(&lock)? {
-        Some(held) => Ok((held, false)),
+        Some(held) => Ok(held),
         None => {
             system.warn(&format!(
                 "waiting for another sweep of {} to end",
                 repository.display()
             ));
-            system.wait_lock(&lock).map(|held| (held, true))
+            system.wait_lock(&lock)
         }
     }
 }
@@ -516,7 +516,7 @@ fn take_lock<S: System>(
     repository: &Path,
 ) -> Result<Option<S::Held>, Failure> {
     if !unattended {
-        return wait_for_lock(system, state, repository).map(|(held, _)| Some(held));
+        return wait_for_lock(system, state, repository).map(Some);
     }
     let lock = state.join(SWEEP_LOCK_FILE);
     match system.lock(&lock)? {

@@ -229,7 +229,7 @@ fn complete(system: &impl System, backup: &Path, oids: &[Oid]) -> Result<BTreeSe
 fn archive_refs(path: &Path) -> Result<Vec<ArchiveFacts>, Failure> {
     let failed =
         |error: &dyn std::fmt::Display| Failure::unreadable(format!("{}: {error}", path.display()));
-    let repository = gix::open(path).map_err(|e| failed(&e))?;
+    let repository = crate::locate::open(path).map_err(|e| failed(&e))?;
     let references = repository.references().map_err(|e| failed(&e))?;
     references
         .prefixed(ARCHIVE_PREFIX)

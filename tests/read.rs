@@ -8,6 +8,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use git_worktree_manager::backup;
+use git_worktree_manager::locate::Reach;
 use git_worktree_manager::lock::LockForm;
 use git_worktree_manager::model::facts::{BranchFacts, RepositoryFacts, WorktreeFacts};
 use git_worktree_manager::model::ids::DefaultSource;
@@ -855,6 +856,7 @@ fn default_given(
             .iter()
             .map(|(source, branch)| (*source, (*branch).to_owned()))
             .collect(),
+        reach: Reach::Upward,
     };
     read::repository(&Real::new(s.environment()), &target, false)
         .expect("the facts")
@@ -1020,6 +1022,7 @@ fn test_reading_changes_nothing() {
     let target = Target {
         path: PathBuf::from(&repo),
         default_branches: vec![],
+        reach: Reach::Upward,
     };
     let read = read::repository(&system, &target, true).expect("the facts");
     read::settings(&read.common_dir).expect("the settings");

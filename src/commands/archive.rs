@@ -12,7 +12,7 @@ use crate::cli::{DefaultBranchArg, DryRunArg, Format, FormatArg, RepositoriesArg
 use crate::commands::{Status, print_json};
 use crate::locate;
 use crate::model::facts::{ArchiveFacts, RefFacts};
-use crate::model::ids::{CommandName, ErrorCode, OutcomeKind, ProblemCode};
+use crate::model::ids::{CommandName, OutcomeKind, ProblemCode};
 use crate::model::report::{BackupReport, DefaultRef, Report, RepositoryReport, SCHEMA, Totals};
 use crate::model::{Note, Oid};
 use crate::names;
@@ -147,46 +147,22 @@ fn targets_of(
     targets::targets(system, source, default_branch)
 }
 
-/// The clone at `target`, or why there is none: `skipped` when no
-/// repository is there, `unreadable` when it can't be read.
-fn open(system: &impl System, target: &Target) -> Result<Opened, Note<ProblemCode>> {
-    let unreadable = |failure: Failure| Note::new(ProblemCode::Unreadable, failure.detail);
-    let located = locate::locate(system, &target.path)
-        .map_err(unreadable)?
-        .ok_or_else(|| {
-            Note::new(
-                ProblemCode::Skipped,
-                format!("{} is not in a git repository", target.path.display()),
-            )
-        })?;
-    let repository = gix::open(&located.common_dir).map_err(|e| {
-        unreadable(Failure::unreadable(format!(
-            "{}: {e}",
-            located.common_dir.display()
-        )))
-    })?;
+/// The clone at `target`; fails as not a repository when none is there.
+fn open(system: &impl System, target: &Target) -> Result<Opened, Failure> {
+    let located = read::located(system, target)?;
+    let repository = locate::open(&located.common_dir)
+        .map_err(|e| Failure::unreadable(format!("{}: {e}", located.common_dir.display())))?;
     let origin = repository
         .config_snapshot()
         .string("remote.origin.url")
         .map(|url| url.to_string());
     let folder = names::repository_name(&located.common_dir);
     let backup = backup::location(system.environment(), origin.as_deref(), &folder)
-        .ok_or_else(|| unreadable(Failure::unreadable("no HOME for the local backup")))?;
+        .ok_or_else(|| Failure::unreadable("no HOME for the local backup"))?;
     Ok(Opened {
         common_dir: located.common_dir,
         backup,
     })
-}
-
-/// A repository's problem as the report gives it, or, outside a manifest,
-/// a target with no repository as the command's failure.
-fn problem(problem: Note<ProblemCode>, manifest: bool) -> Result<Note<ProblemCode>, Failure> {
-    match problem.code {
-        ProblemCode::Skipped if !manifest => {
-            Err(Failure::new(ErrorCode::NotARepository, problem.detail))
-        }
-        _ => Ok(problem),
-    }
 }
 
 /// The clone at the one target of a command that takes no manifest.
@@ -195,10 +171,7 @@ fn open_one(system: &impl System, repository: &RepositoryArg) -> Result<Opened, 
     let target = targets
         .first()
         .ok_or_else(|| Failure::unreadable("no repository named"))?;
-    open(system, target).or_else(|found| {
-        let found = problem(found, false)?;
-        Err(Failure::unreadable(found.detail))
-    })
+    open(system, target)
 }
 
 fn gix_failure(path: &Path) -> impl Fn(&dyn std::fmt::Display) -> Failure + '_ {
@@ -208,7 +181,7 @@ fn gix_failure(path: &Path) -> impl Fn(&dyn std::fmt::Display) -> Failure + '_ {
 /// The tip of the local branch `branch`; None when there is none.
 fn tip(common_dir: &Path, branch: &str) -> Result<Option<Oid>, Failure> {
     let failed = gix_failure(common_dir);
-    let repository = gix::open(common_dir).map_err(|e| failed(&e))?;
+    let repository = locate::open(common_dir).map_err(|e| failed(&e))?;
     let reference = repository
         .try_find_reference(format!("refs/heads/{branch}").as_str())
         .map_err(|e| failed(&e))?;
@@ -222,7 +195,7 @@ fn tip(common_dir: &Path, branch: &str) -> Result<Option<Oid>, Failure> {
 fn checked_out(common_dir: &Path, branch: &str) -> Result<bool, Failure> {
     let failed = gix_failure(common_dir);
     let wanted = format!("refs/heads/{branch}");
-    let repository = gix::open(common_dir).map_err(|e| failed(&e))?;
+    let repository = locate::open(common_dir).map_err(|e| failed(&e))?;
     let is_wanted = |repository: &gix::Repository| {
         repository
             .head_name()
@@ -356,16 +329,19 @@ struct ToWrite {
 
 /// What `archive write` will write in the clone at `target`: the branches
 /// named, or with none every unmerged branch the backup lacks. Fails when
-/// a branch named isn't there, before anything is written anywhere.
+/// a branch named isn't there, before anything is written anywhere, and
+/// outside a repository no manifest named.
 fn to_write(
     system: &impl System,
     target: &Target,
     branches: &[String],
+    manifest: bool,
     now: Timestamp,
 ) -> Result<Result<ToWrite, Note<ProblemCode>>, Failure> {
+    let found = |failure| crate::report::read_problem(failure, manifest).map(Err);
     if branches.is_empty() {
-        return Ok(read::repository(system, target, false)
-            .map(|facts| ToWrite {
+        return match read::repository(system, target, false) {
+            Ok(facts) => Ok(Ok(ToWrite {
                 archives: archive::references(
                     &archive::unarchived(&facts),
                     &facts.backup.archives,
@@ -378,12 +354,13 @@ fn to_write(
                 }),
                 common_dir: facts.common_dir,
                 backup: facts.backup.path,
-            })
-            .map_err(|failure| Note::new(ProblemCode::Unreadable, failure.detail)));
+            })),
+            Err(failure) => found(failure),
+        };
     }
     let opened = match open(system, target) {
         Ok(opened) => opened,
-        Err(problem) => return Ok(Err(problem)),
+        Err(failure) => return found(failure),
     };
     let named: Vec<&String> = branches
         .iter()
@@ -406,7 +383,7 @@ fn to_write(
         .collect::<Result<_, _>>()?;
     let existing = match archives_in(system, &opened.backup) {
         Ok(existing) => existing,
-        Err(failure) => return Ok(Err(Note::new(ProblemCode::Unreadable, failure.detail))),
+        Err(failure) => return found(failure),
     };
     Ok(Ok(ToWrite {
         archives: archive::references(&tips, &existing, now),
@@ -429,10 +406,7 @@ fn write(args: &WriteArgs, system: &mut impl System) -> Result<Status, Failure> 
     let chosen = targets
         .iter()
         .map(|target| {
-            let chosen = match to_write(system, target, &args.branches, now)? {
-                Ok(chosen) => Ok(chosen),
-                Err(found) => Err(problem(found, manifest)?),
-            };
+            let chosen = to_write(system, target, &args.branches, manifest, now)?;
             Ok((target, chosen))
         })
         .collect::<Result<Vec<_>, Failure>>()?;
@@ -492,8 +466,7 @@ fn verify(args: &VerifyArgs, system: &mut impl System) -> Result<Status, Failure
         .iter()
         .map(|target| {
             let checked = open(system, target).and_then(|opened| {
-                let archives = archives_in(system, &opened.backup)
-                    .map_err(|failure| Note::new(ProblemCode::Unreadable, failure.detail))?;
+                let archives = archives_in(system, &opened.backup)?;
                 let compares = archive::compare(system, &opened.backup, &archive::refs(&archives));
                 let backup = archive::backup_report(&opened.backup, 0, compares);
                 Ok((opened.common_dir, backup))
@@ -502,8 +475,8 @@ fn verify(args: &VerifyArgs, system: &mut impl System) -> Result<Status, Failure
                 Ok((common_dir, backup)) => {
                     repository_report(&target.path, Some(common_dir), None, None, Some(backup))
                 }
-                Err(found) => {
-                    let found = problem(found, manifest)?;
+                Err(failure) => {
+                    let found = crate::report::read_problem(failure, manifest)?;
                     repository_report(&target.path, None, None, Some(found), None)
                 }
             })

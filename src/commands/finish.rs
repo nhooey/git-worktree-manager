@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 use crate::cli::{DefaultBranchArg, DryRunArg, Format, FormatArg};
 use crate::commands::{Status, print_json};
+use crate::locate::Reach;
 use crate::model::ids::{CommandName, WorktreeAction};
 use crate::model::report::WorktreeReport;
 use crate::render;
@@ -61,28 +62,26 @@ pub fn run(args: &Args, system: &mut impl System) -> Result<Status, Failure> {
     .into_iter()
     .next()
     .ok_or_else(|| Failure::unreadable("no repository named"))?;
-    let first = crate::read::repository(system, &target, false)?;
-    // From here on the repository is named by its own folder, since the
-    // worktree's may go while `finish` waits.
+    let located = crate::read::located(system, &target)?;
+    // From here on the repository is named by its own folder, and opened
+    // there alone, since the worktree's folder may go while `finish` waits.
     let target = Target {
-        path: first.path.clone(),
-        default_branches: target.default_branches,
+        path: crate::read::folder(system, &located.common_dir)?,
+        reach: Reach::Here,
+        ..target
     };
     let dry_run = args.dry_run.dry_run;
-    // Acting waits for the sweep's lock, and reads the repository again
-    // when a sweep held it, since that sweep may have changed it.
+    // Acting reads the repository only once it holds the sweep's lock, so
+    // no sweep changes it between the read and the steps.
     let locked = match dry_run {
         true => None,
         false => {
-            let state = sweep::state_dir(system, &first.common_dir)?;
-            let (held, waited) = sweep::wait_for_lock(system, &state, &first.path)?;
-            Some((held, state, waited))
+            let state = sweep::state_dir(system, &located.common_dir)?;
+            let held = sweep::wait_for_lock(system, &state, &target.path)?;
+            Some((held, state))
         }
     };
-    let facts = match locked {
-        Some((_, _, true)) => crate::read::repository(system, &target, false)?,
-        _ => first,
-    };
+    let facts = crate::read::repository(system, &target, false)?;
     let settings = crate::read::settings(&facts.common_dir)?;
     let abandon = args.reason.as_deref().filter(|_| args.abandon);
     let Some(plan) = rules::finish(&facts, &settings, now, &worktree, abandon) else {
@@ -104,7 +103,7 @@ pub fn run(args: &Args, system: &mut impl System) -> Result<Status, Failure> {
     };
     let outcomes = match locked {
         None => sweep::nothing_done(&planned),
-        Some((held, state, _)) => {
+        Some((held, state)) => {
             let acting = Acting {
                 target: &target,
                 planned: &planned,

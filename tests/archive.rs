@@ -65,6 +65,27 @@ fn remove_blob(s: &Sandbox, repo: &str, object: &str) {
     .expect("the blob is a loose object");
 }
 
+/// A manifest naming each of `paths`; its path.
+fn manifest(s: &Sandbox, paths: &[&str]) -> String {
+    let file = join(&s.tmp, "repositories.json");
+    let entries: Vec<Value> = paths
+        .iter()
+        .map(|path| serde_json::json!({ "path": path }))
+        .collect();
+    s.write(&file, &Value::from(entries).to_string());
+    file
+}
+
+/// Each repository's problem code, null for one with none.
+fn problem_codes(report: &Value) -> Vec<&Value> {
+    report["repositories"]
+        .as_array()
+        .expect("repositories")
+        .iter()
+        .map(|r| &r["problem"]["code"])
+        .collect()
+}
+
 fn compares(report: &Value) -> &Vec<Value> {
     report["repositories"][0]["backup"]["compares"]
         .as_array()
@@ -392,6 +413,8 @@ fn test_outside_a_repository_nothing_is_printed() {
     for args in [
         &["archive", "list", "--format", "json"][..],
         &["archive", "verify"],
+        &["archive", "write"],
+        &["archive", "write", "--dry-run"],
         &["archive", "write", "fix", "--format", "json"],
         &["archive", "restore", "fix"],
     ] {
@@ -403,6 +426,78 @@ fn test_outside_a_repository_nothing_is_printed() {
             ran.stderr
         );
     }
+}
+
+#[test]
+fn test_a_dry_run_skips_a_manifest_entry_with_no_clone_and_plans_the_rest() {
+    let s = Sandbox::new();
+    let repo = s.cloned();
+    branch(&s, &repo, "fix", "fix.txt");
+    let gone = join(&s.tmp, "gone");
+    let repositories = manifest(&s, &[&repo, &gone]);
+    let args = [
+        "archive",
+        "write",
+        "--dry-run",
+        "--repositories",
+        &repositories,
+    ];
+    let ran = s.run(&args, None, &[]);
+    assert_eq!(ran.code, 0, "{}{}", ran.stderr, ran.stdout);
+    assert!(
+        ran.stdout.contains(&format!("{gone}: skipped: ")),
+        "{}",
+        ran.stdout
+    );
+    assert!(ran.stdout.contains(": refs/archive/fix/"), "{}", ran.stdout);
+    let planned = s.run_json(&args, None, 0);
+    assert_eq!(
+        problem_codes(&planned),
+        [&Value::Null, &Value::from("skipped")]
+    );
+    let note = planned["backup_note"].as_str().expect("a note");
+    assert!(note.contains(": refs/archive/fix/"), "{note}");
+    assert!(!Path::new(&root(&s)).exists());
+}
+
+#[test]
+fn test_write_skips_a_manifest_entry_with_no_clone_and_archives_the_rest() {
+    let s = Sandbox::new();
+    let repo = s.cloned();
+    let tip = branch(&s, &repo, "fix", "fix.txt");
+    let gone = join(&s.tmp, "gone");
+    let repositories = manifest(&s, &[&repo, &gone]);
+    let written = s.run_json(
+        &["archive", "write", "--repositories", &repositories],
+        None,
+        0,
+    );
+    assert_eq!(
+        problem_codes(&written),
+        [&Value::Null, &Value::from("skipped")]
+    );
+    let made = archives(&s, &cloned_backup(&s));
+    let (reference, oid) = made.iter().next().expect("one archive");
+    assert!(reference.starts_with("refs/archive/fix/"), "{reference}");
+    assert_eq!((made.len(), oid), (1, &tip));
+}
+
+#[test]
+fn test_a_manifest_entry_that_cannot_be_read_fails_the_write() {
+    let s = Sandbox::new();
+    let repo = s.repo(&[]);
+    s.write(&join(&repo, ".git/refs/heads/broken"), "rubbish\n");
+    let gone = join(&s.tmp, "gone");
+    let repositories = manifest(&s, &[&repo, &gone]);
+    let written = s.run_json(
+        &["archive", "write", "--repositories", &repositories],
+        None,
+        1,
+    );
+    assert_eq!(
+        problem_codes(&written),
+        [&Value::from("unreadable"), &Value::from("skipped")]
+    );
 }
 
 #[test]

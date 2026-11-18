@@ -8,8 +8,8 @@ use jiff::Timestamp;
 
 use crate::model::Note;
 use crate::model::ids::{
-    ArchiveState, AttentionCode, BranchAction, CommandName, OutcomeKind, ProblemCode, ReasonCode,
-    RuleId, WorktreeAction,
+    ArchiveState, AttentionCode, BranchAction, CommandName, ErrorCode, OutcomeKind, ProblemCode,
+    ReasonCode, RuleId, WorktreeAction,
 };
 use crate::model::outcomes::{Outcome, Outcomes};
 use crate::model::plan::{BranchPlan, Plan, WorktreePlan};
@@ -19,6 +19,7 @@ use crate::model::report::{
 };
 use crate::names::BACKUP_DIR;
 use crate::rules::survival;
+use crate::system::Failure;
 
 string_enum! {
     /// A count in the totals. Every repository's totals and every run's
@@ -225,6 +226,19 @@ pub fn merged(earlier: &RepositoryReport, later: &RepositoryReport) -> Repositor
     RepositoryReport {
         totals: totals(&report),
         ..report
+    }
+}
+
+/// A repository that failed to be read, as the report gives it: skipped
+/// when a manifest named a path with no repository, else unreadable.
+/// Outside a manifest, a path with no repository fails the command.
+pub fn read_problem(failure: Failure, manifest: bool) -> Result<Note<ProblemCode>, Failure> {
+    match failure.code {
+        ErrorCode::NotARepository if manifest => {
+            Ok(Note::new(ProblemCode::Skipped, failure.detail))
+        }
+        ErrorCode::NotARepository => Err(failure),
+        _ => Ok(Note::new(ProblemCode::Unreadable, failure.detail)),
     }
 }
 

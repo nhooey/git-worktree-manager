@@ -7,10 +7,10 @@ mod commits;
 mod worktrees;
 
 use std::collections::BTreeSet;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::backup;
-use crate::locate::locate;
+use crate::locate::{Located, locate};
 use crate::model::Oid;
 use crate::model::facts::{DefaultFacts, RefFacts, RepositoryFacts};
 use crate::model::ids::{DefaultSource, ErrorCode};
@@ -26,6 +26,36 @@ const ORIGIN: &str = "refs/remotes/origin/";
 /// tree diffs read the same commits and trees again and again.
 const OBJECT_CACHE: usize = 16 * 1024 * 1024;
 
+/// Where `target`'s repository is; fails as not a repository when there
+/// is none.
+pub fn located(system: &impl System, target: &Target) -> Result<Located, Failure> {
+    locate(system, &target.path, target.reach)?.ok_or_else(|| {
+        Failure::new(
+            ErrorCode::NotARepository,
+            format!("{} is not in a git repository", target.path.display()),
+        )
+    })
+}
+
+/// The main checkout's folder, as a real path; None for a bare repository.
+fn main_folder(
+    system: &impl System,
+    repository: &gix::Repository,
+) -> Result<Option<PathBuf>, Failure> {
+    repository
+        .workdir()
+        .filter(|_| !repository.is_bare())
+        .map(|dir| system.real_path(dir))
+        .transpose()
+}
+
+/// The folder of the repository whose common git directory is
+/// `common_dir`: its main checkout, or a bare repository's own folder.
+pub fn folder(system: &impl System, common_dir: &Path) -> Result<PathBuf, Failure> {
+    let main = main_folder(system, &open(common_dir)?)?;
+    Ok(main.unwrap_or_else(|| common_dir.to_owned()))
+}
+
 /// Everything the rules read about `target`'s repository; bytes on disk
 /// only when `size` is set.
 pub fn repository(
@@ -33,20 +63,10 @@ pub fn repository(
     target: &Target,
     size: bool,
 ) -> Result<RepositoryFacts, Failure> {
-    let located = locate(system, &target.path)?.ok_or_else(|| {
-        Failure::new(
-            ErrorCode::NotARepository,
-            format!("{} is not in a git repository", target.path.display()),
-        )
-    })?;
-    let common_dir = located.common_dir;
+    let common_dir = located(system, target)?.common_dir;
     let repository = open(&common_dir)?;
     let bare = repository.is_bare();
-    let main = repository
-        .workdir()
-        .filter(|_| !bare)
-        .map(|dir| system.real_path(dir))
-        .transpose()?;
+    let main = main_folder(system, &repository)?;
     let default = default_branch(&repository, &target.default_branches)?;
     let listed = worktrees::list(&repository, &common_dir, main.as_deref())?;
     let tips = branches::tips(&repository)?;
@@ -113,7 +133,7 @@ fn failing(at: &Path) -> impl Fn(&dyn std::fmt::Display) -> Failure + '_ {
 }
 
 fn open(git_dir: &Path) -> Result<gix::Repository, Failure> {
-    gix::open(git_dir)
+    crate::locate::open(git_dir)
         .map(|mut repository| {
             repository.object_cache_size_if_unset(OBJECT_CACHE);
             repository

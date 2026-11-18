@@ -75,10 +75,32 @@ const GIT_LOCAL_VARIABLES: [&str; 15] = [
     "GIT_COMMON_DIR",
 ];
 
+/// The variables that move git's global and system configuration files,
+/// which the program's own reads don't follow.
+const GIT_CONFIG_FILE_VARIABLES: [&str; 3] = [
+    "GIT_CONFIG_GLOBAL",
+    "GIT_CONFIG_SYSTEM",
+    "GIT_CONFIG_NOSYSTEM",
+];
+
+/// The variables a `git` child, or the program started detached, runs
+/// without, so it reads the repository and configuration the program
+/// reads.
+fn cleared() -> impl Iterator<Item = &'static str> {
+    GIT_LOCAL_VARIABLES
+        .into_iter()
+        .chain(GIT_CONFIG_FILE_VARIABLES)
+}
+
 /// `program` in `dir`, without the variables `unset`.
-fn run_in(dir: &Path, program: &OsStr, args: &[OsString], unset: &[&str]) -> io::Result<Completed> {
+fn run_in<'a>(
+    dir: &Path,
+    program: &OsStr,
+    args: &[OsString],
+    unset: impl IntoIterator<Item = &'a str>,
+) -> io::Result<Completed> {
     unset
-        .iter()
+        .into_iter()
         .fold(Command::new(program), |mut command, name| {
             command.env_remove(name);
             command
@@ -103,7 +125,7 @@ fn run_git(dir: &Path, args: &[OsString]) -> io::Result<Completed> {
         .map(OsString::from)
         .chain(args.iter().cloned())
         .collect();
-    run_in(dir, OsStr::new("git"), &args, &GIT_LOCAL_VARIABLES)
+    run_in(dir, OsStr::new("git"), &args, cleared())
 }
 
 fn make_parent(path: &Path) -> Result<(), Failure> {
@@ -205,7 +227,7 @@ impl System for Real {
             Path::new("/"),
             OsStr::new("ps"),
             &super::args(["-o", "lstart=", "-p", &pid.to_string()]),
-            &[],
+            [],
         )
         .map_err(|error| unreadable(&error, Path::new("ps")))?;
         // `ps` exits 1 when no process has the pid.
@@ -307,7 +329,7 @@ impl System for Real {
         program: &OsStr,
         args: &[OsString],
     ) -> Result<Completed, Failure> {
-        run_in(dir, program, args, &[]).map_err(|error| step_failed(&error, Path::new(program)))
+        run_in(dir, program, args, []).map_err(|error| step_failed(&error, Path::new(program)))
     }
 
     fn spawn_detached(
@@ -317,8 +339,7 @@ impl System for Real {
         args: &[OsString],
         env: &[(String, String)],
     ) -> Result<(), Failure> {
-        GIT_LOCAL_VARIABLES
-            .iter()
+        cleared()
             .fold(Command::new(program), |mut command, name| {
                 command.env_remove(name);
                 command
@@ -455,7 +476,7 @@ mod tests {
             Path::new("/"),
             OsStr::new("git"),
             &super::super::args(["rev-parse", "--local-env-vars"]),
-            &[],
+            [],
         )
         .expect("git runs");
         let listed = String::from_utf8_lossy(&listed.stdout).into_owned();

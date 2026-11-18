@@ -166,7 +166,7 @@ pub fn ignore_case(worktree: &Path) -> Result<bool, Failure> {
     let failed = |error: &dyn std::fmt::Display| {
         Failure::unreadable(format!("{}: {error}", worktree.display()))
     };
-    gix::open(worktree)
+    crate::locate::open(worktree)
         .map_err(|e| failed(&e))?
         .filesystem_options()
         .map(|options| options.ignore_case)
@@ -212,7 +212,7 @@ pub fn ignored(system: &impl System, worktree: &Path) -> Result<Vec<Ignored>, Fa
     let failed = |error: &dyn std::fmt::Display| {
         Failure::unreadable(format!("{}: {error}", worktree.display()))
     };
-    let repository = gix::open(worktree).map_err(|e| failed(&e))?;
+    let repository = crate::locate::open(worktree).map_err(|e| failed(&e))?;
     let index = repository.index_or_empty().map_err(|e| failed(&e))?;
     let options = repository
         .dirwalk_options()
