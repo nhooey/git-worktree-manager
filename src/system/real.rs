@@ -163,6 +163,22 @@ impl System for Real {
         }
     }
 
+    fn read_link(&self, path: &Path) -> Result<Option<PathBuf>, Failure> {
+        match fs::read_link(path) {
+            Ok(target) => Ok(Some(target)),
+            // Not a link, or nothing there.
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    io::ErrorKind::NotFound | io::ErrorKind::InvalidInput
+                ) =>
+            {
+                Ok(None)
+            }
+            Err(error) => Err(unreadable(&error, path)),
+        }
+    }
+
     fn list_dir(&self, path: &Path) -> Result<Vec<OsString>, Failure> {
         let names: Result<Vec<OsString>, io::Error> = fs::read_dir(path)
             .and_then(|entries| entries.map(|entry| entry.map(|e| e.file_name())).collect());

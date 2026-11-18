@@ -20,6 +20,10 @@ pub enum FakeFile {
         modified: Option<Timestamp>,
     },
     Dir,
+    /// A symbolic link to `target`, as written.
+    Link {
+        target: PathBuf,
+    },
 }
 
 /// One act, as the fake received it.
@@ -147,6 +151,23 @@ impl Fake {
         }
     }
 
+    /// A symbolic link at `path` to `target`.
+    pub fn with_link(self, path: impl Into<PathBuf>, target: impl Into<PathBuf>) -> Self {
+        Self {
+            files: self
+                .files
+                .into_iter()
+                .chain([(
+                    path.into(),
+                    FakeFile::Link {
+                        target: target.into(),
+                    },
+                )])
+                .collect(),
+            ..self
+        }
+    }
+
     /// `git <args>` in `dir` answers `completed`.
     pub fn with_git<S: AsRef<OsStr>>(
         self,
@@ -254,12 +275,21 @@ impl System for Fake {
     }
 
     fn read_file(&self, path: &Path) -> Result<Option<Vec<u8>>, Failure> {
-        match self.files.get(&self.absolute(path)) {
+        let path = self.absolute(path);
+        match self.files.get(&path) {
             Some(FakeFile::File { bytes, .. }) => Ok(Some(bytes.clone())),
             Some(FakeFile::Dir) => Err(Failure::unreadable(format!(
                 "{}: is a folder",
                 path.display()
             ))),
+            // A link is followed once, to a file.
+            Some(FakeFile::Link { target }) => {
+                let target = self.absolute(&path.parent().unwrap_or(&path).join(target));
+                Ok(match self.files.get(&target) {
+                    Some(FakeFile::File { bytes, .. }) => Some(bytes.clone()),
+                    _ => None,
+                })
+            }
             None => Ok(None),
         }
     }
@@ -271,6 +301,11 @@ impl System for Fake {
                 kind: FileKind::File,
                 size: bytes.len() as u64,
                 modified: *modified,
+            }),
+            Some(FakeFile::Link { target }) => Some(Metadata {
+                kind: FileKind::Symlink,
+                size: target.as_os_str().len() as u64,
+                modified: None,
             }),
             _ if self.is_dir(&path) => Some(Metadata {
                 kind: FileKind::Dir,
@@ -293,8 +328,15 @@ impl System for Fake {
         Ok(names.into_iter().collect())
     }
 
+    fn read_link(&self, path: &Path) -> Result<Option<PathBuf>, Failure> {
+        Ok(match self.files.get(&self.absolute(path)) {
+            Some(FakeFile::Link { target }) => Some(target.clone()),
+            _ => None,
+        })
+    }
+
     fn real_path(&self, path: &Path) -> Result<PathBuf, Failure> {
-        // The fake holds no links.
+        // The fake's links are never resolved.
         Ok(super::normal_path(path, &self.current_dir))
     }
 

@@ -149,6 +149,10 @@ pub trait System {
     /// None when nothing is at `path`.
     fn metadata(&self, path: &Path) -> Result<Option<Metadata>, Failure>;
 
+    /// Where the symbolic link at `path` points, as written; None when
+    /// `path` is no link.
+    fn read_link(&self, path: &Path) -> Result<Option<PathBuf>, Failure>;
+
     /// The names in a folder, sorted.
     fn list_dir(&self, path: &Path) -> Result<Vec<OsString>, Failure>;
 
