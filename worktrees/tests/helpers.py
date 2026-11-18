@@ -13,7 +13,9 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from typing import Dict, Optional
+from typing import Dict, Optional, Sequence
+
+from worktrees import core, rules
 
 SOURCE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 BIN = os.path.join(SOURCE, "bin", "worktrees")
@@ -75,6 +77,12 @@ class Sandbox(unittest.TestCase):
             "PYTHONPATH": SOURCE,
             "TMPDIR": self.tmp,
         }
+        self.processes = []
+
+    def tearDown(self):
+        for process in self.processes:
+            process.kill()
+            process.wait()
 
     # Running things ----------------------------------------------------------
 
@@ -112,6 +120,11 @@ class Sandbox(unittest.TestCase):
         self.assertEqual(result.returncode, code, result.stderr + result.stdout)
         return json.loads(result.stdout)
 
+    def background(self, args: Sequence[str], cwd: Optional[str] = None) -> subprocess.Popen:
+        process = subprocess.Popen(args, cwd=cwd or self.tmp, env=self.env)
+        self.processes.append(process)
+        return process
+
     # Repositories ------------------------------------------------------------
 
     def write(self, path: str, text: str = "x\n") -> None:
@@ -145,9 +158,121 @@ class Sandbox(unittest.TestCase):
         self.git(path, "remote", "set-head", "origin", "main")
         return path
 
+    def remote(self, repo: str) -> str:
+        return self.git(repo, "remote", "get-url", "origin").strip()
+
+    def other_clone(self, repo: str, name: str = "other") -> str:
+        path = os.path.join(self.tmp, name)
+        self.sh("git", "clone", "--quiet", self.remote(repo), path)
+        return path
+
     def add_worktree(
         self, repo: str, branch: str, path: Optional[str] = None, start: str = "HEAD"
     ) -> str:
         target = path or os.path.join(repo + ".worktrees", branch.replace("/", "-"))
         self.git(repo, "worktree", "add", "--quiet", "-b", branch, target, start)
         return os.path.realpath(target)
+
+    def merge_into_main(self, repo: str, branch: str) -> None:
+        """Merge `branch` into `origin/main` with a merge commit, as a pull request would."""
+        other = os.path.join(self.tmp, "merger")
+        if not os.path.isdir(other):
+            self.sh("git", "clone", "--quiet", self.remote(repo), other)
+        self.git(other, "fetch", "--quiet", "origin")
+        self.git(other, "checkout", "--quiet", "main")
+        self.git(other, "reset", "--quiet", "--hard", "origin/main")
+        self.git(other, "merge", "--quiet", "--no-ff", "-m", "merge " + branch, "origin/" + branch)
+        self.git(other, "push", "--quiet", "origin", "main")
+        self.git(repo, "fetch", "--quiet", "origin")
+
+    def landed_branch(self, repo: str, branch: str, worktree: bool = False) -> str:
+        """A branch with a commit, pushed and merged; returns its worktree's path or its name."""
+        path = self.add_worktree(repo, branch) if worktree else None
+        where = path or repo
+        if not worktree:
+            self.git(repo, "branch", "--quiet", branch, "main")
+            self.git(repo, "checkout", "--quiet", branch)
+        self.commit(where, branch.replace("/", "-") + ".txt")
+        self.git(where, "push", "--quiet", "--set-upstream", "origin", branch)
+        if not worktree:
+            self.git(repo, "checkout", "--quiet", "main")
+        self.merge_into_main(repo, branch)
+        return path or branch
+
+    def local_branch(self, repo: str, branch: str, push: bool = False) -> str:
+        """A branch with one commit of its own; returns its tip."""
+        self.git(repo, "branch", "--quiet", branch, "main")
+        self.git(repo, "checkout", "--quiet", branch)
+        tip = self.commit(repo, branch.replace("/", "-") + ".txt")
+        if push:
+            self.git(repo, "push", "--quiet", "--set-upstream", "origin", branch)
+        self.git(repo, "checkout", "--quiet", "main")
+        return tip
+
+    def state_dir(self, repo: str) -> str:
+        common = os.path.realpath(
+            self.git(repo, "rev-parse", "--path-format=absolute", "--git-common-dir").strip()
+        )
+        return core.repo_state_dir(self.env, common)
+
+    def events(self, repo: str) -> Sequence[Dict]:
+        path = os.path.join(self.state_dir(repo), "events.jsonl")
+        if not os.path.exists(path):
+            return []
+        with open(path) as handle:
+            return [json.loads(line) for line in handle if line.strip()]
+
+    def branches(self, repo: str) -> Sequence[str]:
+        return self.git(repo, "for-each-ref", "--format=%(refname:short)", "refs/heads").split()
+
+    def backup(self, repo: str) -> str:
+        """The bare repository under `~/backups/git-archive` that holds `repo`'s archives."""
+        url = self.git(repo, "config", "--default", "", "--get", "remote.origin.url").strip()
+        owner, name = rules.backup_name(url or None, os.path.basename(repo))
+        return os.path.join(self.env["HOME"], "backups", "git-archive", owner, name + ".git")
+
+    def archives(self, repo: str, local: bool = False) -> Dict[str, str]:
+        """`refs/archive/*` in `repo`'s backup, or in `repo` itself with `local`."""
+        where = repo if local else self.backup(repo)
+        if not os.path.isdir(where):
+            return {}
+        return dict(
+            line.split(" ", 1)
+            for line in self.git(
+                where, "for-each-ref", "--format=%(refname) %(objectname)", "refs/archive"
+            ).splitlines()
+        )
+
+    def listed(self, repo: str) -> Sequence[str]:
+        return tuple(
+            os.path.realpath(line.split(" ", 1)[1])
+            if os.path.exists(line.split(" ", 1)[1])
+            else line.split(" ", 1)[1]
+            for line in self.git(repo, "worktree", "list", "--porcelain").splitlines()
+            if line.startswith("worktree ")
+        )
+
+    def lstart(self, pid: int) -> str:
+        """The process's start, in UTC, as `ps -o lstart=` gives it."""
+        return " ".join(
+            subprocess.run(
+                ("ps", "-o", "lstart=", "-p", str(pid)),
+                env={**self.env, "LC_ALL": "C", "TZ": "UTC0"},
+                stdout=subprocess.PIPE,
+                universal_newlines=True,
+                check=True,
+            ).stdout.split()
+        )
+
+    def dead_pid(self) -> int:
+        process = subprocess.Popen(("true",))
+        process.wait()
+        return process.pid
+
+    def entry(self, report: Dict, kind: str, key: str) -> Dict:
+        repo = report["repositories"][0]
+        field = "path" if kind == "worktrees" else "branch"
+        return next(e for e in repo[kind] if e[field] == key)
+
+    def codes(self, entry: Dict) -> Sequence[str]:
+        return [r["code"] for r in entry["reasons"]]

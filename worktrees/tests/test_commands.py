@@ -183,6 +183,8 @@ class Clean(Sandbox):
         self.assertTrue(os.path.exists(os.path.join(wt, "build", "dep", "src.c")))
         self.assertFalse(os.path.exists(build))
         self.assertIn("junk.o", done["remove"])
+        cleaned = [e for e in self.events(wt) if e["event"] == "clean"]
+        self.assertEqual([e["worktree"] for e in cleaned], [wt])
 
     def test_main_checkout_is_refused(self):
         repo = self.repo()
@@ -199,6 +201,25 @@ class Clean(Sandbox):
         refused = self.wt_json("clean", wt, code=3)
         self.assertIn("1 tracked files with changes", refused["reasons"])
         self.assertTrue(os.path.exists(os.path.join(wt, "junk.o")))
+
+
+class SweepCleansTheIdle(Sandbox):
+    def test_an_unlanded_worktree_idle_a_day_loses_its_build_output(self):
+        repo = self.cloned()
+        wt = self.add_worktree(repo, "wip")
+        self.commit(wt, "wip.txt")
+        self.write(os.path.join(wt, "target", "debug", "app"))
+        self.write(os.path.join(wt, ".env"), "SECRET=1\n")
+        gitdir = self.git(wt, "rev-parse", "--absolute-git-dir").strip()
+        old = time.time() - 2 * 86400
+        for name in ("HEAD", "index", "logs/HEAD"):
+            os.utime(os.path.join(gitdir, name), (old, old))
+        report = self.wt_json("sweep", repo)
+        entry = self.entry(report, "worktrees", wt)
+        self.assertEqual(entry["action"], "clean")
+        self.assertFalse(os.path.exists(os.path.join(wt, "target")))
+        self.assertTrue(os.path.exists(os.path.join(wt, ".env")))
+        self.assertIn(wt, self.listed(repo))
 
 
 class Sessions(Sandbox):
@@ -224,6 +245,11 @@ class EntryPoint(Sandbox):
             "env",
             "provision",
             "clean",
+            "sweep",
+            "status",
+            "verdict",
+            "log",
+            "archive",
             "sessions",
         ):
             result = self.wt(command, "--help")
@@ -231,7 +257,7 @@ class EntryPoint(Sandbox):
             self.assertIn("Example:", result.stdout)
 
     def test_abbreviated_options_are_refused(self):
-        self.assertEqual(self.wt("provision", "--dry").returncode, 2)
+        self.assertEqual(self.wt("sweep", "--dry").returncode, 2)
 
     def test_the_sh_entry_point_runs_the_package_through_a_symbolic_link(self):
         repo = self.cloned()
@@ -240,7 +266,7 @@ class EntryPoint(Sandbox):
         os.symlink(BIN, link)
         env = {**self.env, "PYTHONPATH": ""}
         result = subprocess.run(
-            (link, "sessions", "--json"),
+            (link, "status", "--json"),
             cwd=repo,
             env=env,
             stdout=subprocess.PIPE,
@@ -248,4 +274,6 @@ class EntryPoint(Sandbox):
             universal_newlines=True,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(json.loads(result.stdout)["checkout"], os.path.realpath(repo))
+        self.assertEqual(
+            json.loads(result.stdout)["repositories"][0]["repository"], os.path.realpath(repo)
+        )

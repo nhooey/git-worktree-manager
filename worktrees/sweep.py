@@ -1,11 +1,48 @@
-"""The shell of `clean`: it lists a worktree's build output and deletes it."""
+"""The sweep's shell: it acts on `rules.plan` in the sweep's order, logs each action, and reports.
+
+`sweep_repository` takes the repository's lock, fetches when asked,
+collects the facts, plans, acts and writes `last-sweep.json`. Under a dry
+run it takes no lock, writes nothing and marks each action `would`.
+"""
 
 from __future__ import annotations
 
 import os
-from typing import Dict, Mapping, Tuple
+from typing import Dict, Iterable, Mapping, Optional, Sequence, Tuple
 
-from . import core, gather, system
+from . import core, gather, rules, system
+
+Key = Tuple[str, str]
+Outcome = Dict[str, object]
+
+DONE: Outcome = {"done": True}
+MAX_RUNS = 5
+
+
+def failed(error: str) -> Outcome:
+    return {"done": False, "error": error}
+
+
+# The log ---------------------------------------------------------------------------
+
+
+def record(common_dir: str, event: str, source: str, fields: Mapping) -> Dict:
+    return {
+        "time": rules.iso(system.now()),
+        "repo": common_dir,
+        "event": event,
+        "source": source,
+        **{k: v for k, v in fields.items() if v is not None and k != "event"},
+    }
+
+
+def log_at(state_dir: str, common_dir: str, event: str, source: str, **fields: object) -> None:
+    system.append_event(state_dir, record(common_dir, event, source, fields))
+
+
+def log(repo: rules.RepoFacts, event: str, source: str = "sweep", **fields: object) -> None:
+    log_at(repo.state_dir, repo.common_dir, event, source, **fields)
+
 
 # `clean` ------------------------------------------------------------------------------
 
@@ -72,3 +109,855 @@ def apply_clean(listing: Mapping) -> None:
         system.remove_tree(os.path.join(worktree, rel.rstrip("/")), worktree)
     for rel in listing["mixed_dirs"]:
         prune_empty_dirs(os.path.join(worktree, rel))
+
+
+# Acting ----------------------------------------------------------------------------
+
+
+# The local backup ------------------------------------------------------------------
+
+Archive = Tuple[str, str, str, str, str]  # (branch, ref, tip, event, source)
+
+
+def root_readme(top: str) -> str:
+    return """# Git archives
+
+Branches the worktrees sweep archived before deleting them from a clone,
+or found deleted by hand, so that no commit is lost. Nothing here is
+pushed to `origin`: a branch that was never pushed stays private.
+
+- **Layout:** one bare repository per project, `<owner>/<repo>.git`, named
+  from the clone's `origin` URL, or `local/<folder>.git` for a clone with no
+  `origin`. Each owner folder has a `README.md` listing its repositories.
+- **Refs:** each archive is `refs/archive/<branch>/<UTC time>`, at the
+  branch's tip when it was archived. `git push` copies only the objects the
+  repository lacks.
+- **Compare pass:** before a branch is deleted, the sweep checks its archive
+  with git: `git rev-parse` of the ref equals the branch's tip,
+  `git rev-list --objects --missing=error` over its history passes, and
+  `git fsck --connectivity-only` passes. A branch whose archive fails stays.
+
+## Restoring
+
+From inside a clone of the project, fetch the archives, then branch from one:
+
+```bash
+git fetch {top}/<owner>/<repo>.git 'refs/archive/*:refs/archive/*'
+git branch <branch> refs/archive/<branch>/<time>
+```
+
+`git ls-remote {top}/<owner>/<repo>.git 'refs/archive/*'` lists them without
+fetching.
+""".format(top=top)
+
+
+def owner_readme(top: str, owner: str, repositories: Sequence[str]) -> str:
+    return """# Git archives of {owner}
+
+The archived branches of {owner}'s projects, one bare repository each,
+written by the worktrees sweep; `../README.md` says how they are made and
+checked.
+
+- **Repositories:** {listed}.
+
+## Restoring
+
+From inside a clone of the project, fetch the archives, then branch from one:
+
+```bash
+git fetch {top}/{owner}/<repo>.git 'refs/archive/*:refs/archive/*'
+git branch <branch> refs/archive/<branch>/<time>
+```
+""".format(top=top, owner=owner, listed=", ".join("`{}`".format(r) for r in repositories))
+
+
+BACKUPS_LINE = (
+    "- `git-archive/`: git branches the worktrees sweep archived before deleting them, one "
+    "bare repository per project; its `README.md` says how to restore one.\n"
+)
+
+
+def write_if_changed(path: str, text: str) -> None:
+    if system.read_text(path) != text:
+        system.write_atomically(path, text)
+
+
+def ensure_backup(repo: rules.RepoFacts) -> Optional[str]:
+    """The bare repository, made with `git init --bare` the first time, and the READMEs.
+
+    Returns the problem when the backup can't be made.
+    """
+    bare = repo.backup
+    folder = os.path.dirname(bare)
+    top = os.path.dirname(folder)
+    backups = os.path.join(os.path.dirname(top), "README.md")
+    try:
+        os.makedirs(folder, exist_ok=True)
+        if not os.path.isdir(bare):
+            made = system.run(
+                ("git", "init", "--bare", "--quiet", bare), check=False, extra_env=system.GIT_ENV
+            )
+            if made.returncode != 0:
+                return "local backup {}: {}".format(bare, made.stderr.strip())
+        write_if_changed(os.path.join(top, "README.md"), root_readme(top))
+        write_if_changed(
+            os.path.join(folder, "README.md"),
+            owner_readme(
+                top,
+                os.path.basename(folder),
+                sorted(n for n in os.listdir(folder) if n.endswith(".git")),
+            ),
+        )
+        listed = system.read_text(backups)
+        if listed is None or "`git-archive/`" not in listed:
+            body = (listed or "# Backups\n").rstrip("\n") + "\n"
+            system.write_atomically(backups, body + ("\n" if listed is None else "") + BACKUPS_LINE)
+    except OSError as error:
+        return "local backup {}: {}".format(bare, error)
+    return None
+
+
+def compare(repo: rules.RepoFacts, items: Sequence[Archive], problem: Optional[str]) -> list:
+    """The compare pass: each archive checked by git in the backup, never by this program.
+
+    `git rev-parse <ref>` must give the branch's tip, `git rev-list --objects
+    --missing=error <tip>` must pass, and `git fsck --connectivity-only` over
+    the backup, run once, must pass.
+    """
+    bare = repo.backup
+    present = problem is None and os.path.isdir(bare)
+    fsck = (
+        system.git_result(bare, "fsck", "--connectivity-only", "--no-dangling", "--no-progress")
+        if present
+        else None
+    )
+    tips = tuple(dict.fromkeys(tip for _, _, tip, _, _ in items))
+    whole = present and system.git_ok(
+        bare, "rev-list", "--objects", "--missing=error", "--quiet", *tips
+    )
+    history = {
+        tip: whole
+        or (
+            present
+            and system.git_ok(bare, "rev-list", "--objects", "--missing=error", "--quiet", tip)
+        )
+        for tip in tips
+    }
+
+    def found(ref: str) -> Optional[str]:
+        got = system.git_result(bare, "rev-parse", "--verify", "--quiet", ref) if present else None
+        return got.stdout.strip() if got is not None and got.returncode == 0 else None
+
+    def entry(branch: str, ref: str, tip: str) -> Dict:
+        backup_tip = found(ref)
+        checks = {
+            "tip": backup_tip == tip,
+            "history": history[tip],
+            "fsck": fsck is not None and fsck.returncode == 0,
+        }
+        failing = tuple(k for k, ok in checks.items() if not ok)
+        return {
+            "branch": branch,
+            "ref": ref,
+            "tip": tip,
+            "backup_tip": backup_tip,
+            "checks": checks,
+            "ok": not failing,
+            "error": None
+            if not failing
+            else problem
+            or "compare failed: {}{}".format(
+                ", ".join(failing),
+                ": " + fsck.stderr.strip().splitlines()[0]
+                if "fsck" in failing and fsck is not None and fsck.stderr.strip()
+                else "",
+            ),
+        }
+
+    return [entry(branch, ref, tip) for branch, ref, tip, _, _ in items]
+
+
+def write_archives(
+    repo: rules.RepoFacts, items: Sequence[Archive]
+) -> Tuple[Dict[str, Outcome], list]:
+    """Each archive pushed to the local backup in one `git push`, then the compare pass.
+
+    Never pushed to `origin`. An archive whose compare fails is a failure,
+    so the branch it guards is kept.
+    """
+    if not items:
+        return {}, []
+    made = ensure_backup(repo)
+    pushed = (
+        system.git_result(
+            repo.main,
+            "push",
+            "--quiet",
+            "--no-verify",
+            repo.backup,
+            *("{}:{}".format(tip, ref) for _, ref, tip, _, _ in items),
+        )
+        if made is None
+        else None
+    )
+    problem = made or (
+        "local backup {}: {}".format(repo.backup, pushed.stderr.strip())
+        if pushed is not None and pushed.returncode != 0
+        else None
+    )
+    compares = compare(repo, items, made)
+    for (branch, ref, tip, event, source), c in zip(items, compares):
+        if c["ok"]:
+            log(repo, event, source, ref=ref, new=tip, branch=branch, backup=repo.backup)
+    return (
+        {c["ref"]: DONE if c["ok"] else failed(problem or str(c["error"])) for c in compares},
+        compares,
+    )
+
+
+def write_archive(
+    repo: rules.RepoFacts, branch: str, ref: str, tip: str, event: str, source: str
+) -> Tuple[Outcome, list]:
+    outcomes, compares = write_archives(repo, ((branch, ref, tip, event, source),))
+    return outcomes[ref], compares
+
+
+def delete_branch(repo: rules.RepoFacts, v: rules.BranchVerdict) -> Outcome:
+    """`git update-ref -d` with the tip the rules tested, so a branch that moved stays."""
+    ref = "refs/heads/" + v.facts.name
+    deleted = system.git_result(
+        repo.main, "update-ref", "-m", "worktrees sweep", "-d", ref, v.facts.tip
+    )
+    if deleted.returncode != 0:
+        return failed(deleted.stderr.strip())
+    log(repo, "branch-delete", ref=ref, old=v.facts.tip, verdict=v.state)
+    return DONE
+
+
+def archived_first(p: rules.Plan, v: rules.BranchVerdict, done: Mapping[Key, Outcome]) -> Outcome:
+    """The branch's archive, written and compared before anything is deleted."""
+    name = v.facts.name
+    return done.get(("archive", name), failed("not archived")) if name in p.archives else DONE
+
+
+def end_branch(p: rules.Plan, v: rules.BranchVerdict, done: Mapping[Key, Outcome]) -> Outcome:
+    archived = archived_first(p, v, done) if v.action == "archive+delete" else DONE
+    return delete_branch(p.repo, v) if archived.get("done") else archived
+
+
+def remove_worktree(
+    p: rules.Plan,
+    v: rules.WorktreeVerdict,
+    branch: Optional[rules.BranchVerdict],
+    size: Optional[int],
+    done: Mapping[Key, Outcome],
+) -> Tuple[Tuple[Key, Outcome], ...]:
+    f = v.facts
+    archived = (
+        archived_first(p, branch, done)
+        if branch is not None and branch.action == "archive+delete"
+        else DONE
+    )
+    if not archived.get("done"):
+        return ((("worktree", f.path), archived),)
+    removed = system.git_result(p.repo.main, "worktree", "remove", f.path)
+    if removed.returncode != 0:
+        return ((("worktree", f.path), failed(removed.stderr.strip())),)
+    log(
+        p.repo,
+        "remove",
+        worktree=f.path,
+        ref="refs/heads/" + f.branch if f.branch else None,
+        old=f.head,
+        bytes=size,
+    )
+    then = (
+        ((("branch", branch.facts.name), end_branch(p, branch._replace(action="delete"), done)),)
+        if branch is not None and branch.action in ("delete", "archive+delete")
+        else ()
+    )
+    return ((("worktree", f.path), DONE),) + then
+
+
+def clean_worktree(
+    env: Mapping[str, str], cfg: Mapping, repo: rules.RepoFacts, v: rules.WorktreeVerdict
+) -> Outcome:
+    listing = clean_listing(env, cfg, repo.main, repo.common_dir, v.facts.path, False)
+    apply_clean(listing)
+    log(
+        repo,
+        "clean",
+        worktree=v.facts.path,
+        entries=len(listing["remove"]) + (1 if listing["build_dir"] else 0),
+    )
+    return {**DONE, "deleted": listing["remove"]}
+
+
+def prune_worktrees(
+    repo: rules.RepoFacts, gone: Sequence[rules.WorktreeVerdict]
+) -> Tuple[Tuple[Key, Outcome], ...]:
+    if not gone:
+        return ()
+    pruned = system.git_result(repo.main, "worktree", "prune")
+    if pruned.returncode != 0:
+        return tuple((("worktree", v.facts.path), failed(pruned.stderr.strip())) for v in gone)
+    for v in gone:
+        log(
+            repo,
+            "prune",
+            worktree=v.facts.path,
+            ref="refs/heads/" + v.facts.branch if v.facts.branch else None,
+            old=v.facts.head,
+        )
+    return tuple((("worktree", v.facts.path), DONE) for v in gone)
+
+
+def prune_archive(repo: rules.RepoFacts, ref: str, obj: str) -> Outcome:
+    deleted = system.git_result(
+        repo.main, "update-ref", "-m", "worktrees archive-prune", "-d", ref, obj
+    )
+    if deleted.returncode != 0:
+        return failed(deleted.stderr.strip())
+    log(repo, "archive-prune", ref=ref, old=obj)
+    return DONE
+
+
+def execute(
+    env: Mapping[str, str], cfg: Mapping, p: rules.Plan, sizes: Mapping[str, Optional[int]]
+) -> Dict[Key, Outcome]:
+    """Every action of the plan, in the sweep's order; returns each one's outcome."""
+    repo = p.repo
+    tips = {v.facts.name: v.facts.tip for v in p.branches}
+    by_branch = {v.facts.name: v for v in p.branches}
+    for snapshot in p.snapshots:
+        log(
+            repo,
+            "snapshot",
+            "backfill" if p.backfill else "sweep",
+            **{k: v for k, v in snapshot.items() if k != "event"},
+        )
+    written, compares = write_archives(
+        repo,
+        tuple(
+            (
+                name,
+                ref,
+                tips[name],
+                "archive",
+                "backfill" if name in p.backfill_archives else "sweep",
+            )
+            for name, ref in p.archives.items()
+        )
+        + tuple((b, ref, old, "rescue", "sweep") for b, old, ref in p.rescues),
+    )
+    backfilled = {("archive", name): written[ref] for name, ref in p.archives.items()}
+    pruned = dict(prune_worktrees(repo, tuple(v for v in p.worktrees if v.action == "prune")))
+    removed = dict(
+        pair
+        for v in p.worktrees
+        if v.action == "remove"
+        for pair in remove_worktree(
+            p, v, by_branch.get(v.facts.branch or ""), sizes.get(v.facts.path), backfilled
+        )
+    )
+    cleaned = {
+        ("worktree", v.facts.path): clean_worktree(env, cfg, repo, v)
+        for v in p.worktrees
+        if v.action == "clean"
+    }
+    branches = {
+        ("branch", v.facts.name): end_branch(p, v, backfilled)
+        for v in p.branches
+        if v.worktree is None and v.action in ("delete", "archive+delete")
+    }
+    archives_pruned = {
+        ("archive-prune", ref): prune_archive(repo, ref, obj) for ref, obj in p.archive_prunes
+    }
+    rescued = {("rescue", old): written[ref] for _, old, ref in p.rescues}
+    for v in p.worktrees:
+        if v.lock_report and v.facts.lock is not None:
+            log(
+                repo,
+                "lock-report",
+                worktree=v.facts.path,
+                lock=v.facts.lock.lock.reason,
+                age=v.facts.lock.age,
+                alive=v.facts.lock.alive,
+            )
+    return {
+        **backfilled,
+        **pruned,
+        **removed,
+        **cleaned,
+        **branches,
+        **archives_pruned,
+        **rescued,
+        ("backup", ""): {"compares": compares},
+    }
+
+
+# The report ----------------------------------------------------------------------------
+
+
+def iso_or_none(seconds: Optional[float]) -> Optional[str]:
+    return rules.iso(seconds) if seconds is not None else None
+
+
+def lock_entry(v: rules.WorktreeVerdict) -> Optional[Dict]:
+    lf = v.facts.lock
+    return (
+        None
+        if lf is None
+        else {
+            "reason": lf.lock.reason,
+            "who": lf.lock.who,
+            "pid": lf.lock.pid,
+            "since": iso_or_none(lf.lock.since),
+            "age_seconds": lf.age,
+            "alive": lf.alive,
+            "process_start": iso_or_none(lf.process_start),
+            "report": v.lock_report,
+        }
+    )
+
+
+def outcome_fields(dry: bool, action: str, outcome: Optional[Outcome]) -> Dict:
+    return {"would": dry and action != "keep"} if outcome is None else {"would": False, **outcome}
+
+
+def reasons(rs: Iterable[rules.Reason]) -> list:
+    return [{"code": r.code, "detail": r.detail} for r in rs]
+
+
+def archive_note(ref: str, dry: bool, backup: str, outcome: Optional[Outcome]) -> str:
+    """`archive <ref> (would write to the local backup <path>, would compare)`, or what became of it."""
+    steps = (
+        ("would write to the local backup " + backup, "would compare")
+        if dry or outcome is None
+        else (str(outcome.get("error")),)
+        if not outcome.get("done")
+        else ("written to the local backup " + backup, "compared")
+    )
+    return "archive {} ({})".format(ref, ", ".join(steps))
+
+
+def branch_archive(
+    p: rules.Plan, name: Optional[str], dry: bool, done: Mapping[Key, Outcome]
+) -> Tuple[str, ...]:
+    """The archive the sweep writes for a branch, as a `survives` entry."""
+    ref = p.archives.get(name or "")
+    outcome = done.get(("archive", name or ""))
+    return (archive_note(ref, dry, p.repo.backup, outcome),) if ref else ()
+
+
+NOWHERE = "nowhere else: kept"
+
+
+def worktree_survives(
+    p: rules.Plan, v: rules.WorktreeVerdict, dry: bool, done: Mapping[Key, Outcome]
+) -> list:
+    f = v.facts
+    commits = tuple(v.survives) + branch_archive(p, f.branch, dry, done)
+    return (
+        list(commits or ("HEAD {}: {}".format(f.head[:12], NOWHERE),))
+        + (["{} uncommitted paths: {}".format(len(f.changes), NOWHERE)] if f.changes else [])
+        + (["kept files {}: {}".format(", ".join(f.kept), NOWHERE)] if f.kept else [])
+    )
+
+
+def worktree_entry(
+    v: rules.WorktreeVerdict,
+    dry: bool,
+    outcome: Optional[Outcome],
+    size: Optional[int],
+    tests: bool,
+    survives: Sequence[str] = (),
+) -> Dict:
+    f = v.facts
+    return {
+        "survives": list(survives),
+        "kind": "worktree",
+        "path": f.path,
+        "branch": f.branch,
+        "head": f.head,
+        "main": f.is_main,
+        "action": v.action,
+        **outcome_fields(dry, v.action, outcome),
+        "reasons": reasons(v.reasons),
+        "lock": lock_entry(v),
+        "landed": f.landed,
+        "idle_seconds": f.idle,
+        "uncommitted": list(f.changes),
+        "keep_files": list(f.kept),
+        "clean": list(f.cleanable) if v.action == "clean" else [],
+        "bytes": size if v.action == "remove" else None,
+        **({"tests": [t._asdict() for t in v.tests]} if tests else {}),
+    }
+
+
+def branch_entry(
+    p: rules.Plan,
+    v: rules.BranchVerdict,
+    dry: bool,
+    outcome: Optional[Outcome],
+    done: Optional[Mapping[Key, Outcome]] = None,
+) -> Dict:
+    b = v.facts
+    found = tuple(v.survives) + branch_archive(p, b.name, dry, done or {})
+    return {
+        "survives": list(found or (NOWHERE,)),
+        "kind": "branch",
+        "branch": b.name,
+        "tip": b.tip,
+        "upstream": b.upstream,
+        "track": b.track,
+        "state": v.state,
+        "action": v.action,
+        **outcome_fields(dry, v.action, outcome),
+        "reasons": reasons(v.reasons),
+        "worktree": v.worktree,
+        "archive_ref": p.archives.get(b.name) if v.action == "archive+delete" else None,
+        "age_seconds": b.age,
+    }
+
+
+def totals(report: Mapping) -> Dict:
+    wts, brs = report["worktrees"], report["branches"]
+    return {
+        "worktrees": rules.count(w["action"] for w in wts),
+        "branches": rules.count(b["action"] for b in brs),
+        "kept_by_reason": rules.count(
+            r["code"]
+            for e in tuple(wts) + tuple(brs)
+            if e["action"] in ("keep", "clean")
+            for r in e["reasons"]
+        ),
+        "archives_written": report["backup"]["archived"],
+        "archives_pruned": len(report["archives_pruned"]),
+        "archives_verified": report["backup"]["verified"],
+        "archives_failed": report["backup"]["failed"],
+        "rescues": len(report["rescues"]),
+        "lock_reports": len(report["lock_reports"]),
+        "snapshots": report["backfill"]["snapshots"],
+        "bytes_freed": sum(w["bytes"] or 0 for w in wts if w["action"] == "remove"),
+    }
+
+
+def repo_report(
+    p: rules.Plan,
+    dry: bool,
+    done: Mapping[Key, Outcome],
+    sizes: Mapping[str, Optional[int]],
+    tests: bool = False,
+) -> Dict:
+    repo = p.repo
+    tips = {v.facts.name: v.facts.tip for v in p.branches}
+    body = {
+        "repository": repo.main,
+        "common_dir": repo.common_dir,
+        "state_dir": repo.state_dir,
+        "default_branch": repo.default_branch,
+        "default_ref": repo.default_ref,
+        "problem": repo.default_problem,
+        "settings": repo.settings._asdict(),
+        "worktrees": [
+            worktree_entry(
+                v,
+                dry,
+                done.get(("worktree", v.facts.path)),
+                sizes.get(v.facts.path),
+                tests,
+                worktree_survives(p, v, dry, done),
+            )
+            for v in p.worktrees
+        ],
+        "branches": [
+            branch_entry(p, v, dry, done.get(("branch", v.facts.name)), done) for v in p.branches
+        ],
+        "backfill": {
+            "needed": p.backfill,
+            "snapshots": len(p.snapshots),
+            "branches": list(p.backfill_archives),
+            "archives": [
+                {
+                    "branch": name,
+                    "ref": p.archives[name],
+                    "tip": tips[name],
+                    "backup": repo.backup,
+                    **outcome_fields(dry, "archive", done.get(("archive", name))),
+                }
+                for name in p.backfill_archives
+            ],
+        },
+        "archives_pruned": [
+            {
+                "ref": ref,
+                "object": obj,
+                **outcome_fields(dry, "archive-prune", done.get(("archive-prune", ref))),
+            }
+            for ref, obj in p.archive_prunes
+        ],
+        "rescues": [
+            {
+                "branch": branch,
+                "old": old,
+                "ref": ref,
+                "backup": repo.backup,
+                **outcome_fields(dry, "rescue", done.get(("rescue", old))),
+            }
+            for branch, old, ref in p.rescues
+        ],
+        "lock_reports": [
+            {"path": v.facts.path, **(lock_entry(v) or {})} for v in p.worktrees if v.lock_report
+        ],
+        "backup": backup_entry(p, dry, done),
+    }
+    return {**body, "totals": totals(body)}
+
+
+def backup_entry(p: rules.Plan, dry: bool, done: Mapping[Key, Outcome]) -> Dict:
+    """The local backup and its compare pass: what was, or would be, archived and compared."""
+    tips = {v.facts.name: v.facts.tip for v in p.branches}
+    planned = [
+        {"branch": name, "ref": ref, "tip": tips[name], "would": True}
+        for name, ref in p.archives.items()
+    ] + [{"branch": b, "ref": ref, "tip": old, "would": True} for b, old, ref in p.rescues]
+    compares = list(done.get(("backup", ""), {}).get("compares", ())) or (planned if dry else [])
+    return {
+        "path": p.repo.backup,
+        "archived": len(compares),
+        "verified": sum(1 for c in compares if c.get("ok")),
+        "failed": sum(1 for c in compares if c.get("ok") is False),
+        "compares": compares,
+    }
+
+
+def overall_totals(reports: Sequence[Mapping]) -> Dict:
+    good = tuple(r["totals"] for r in reports if "totals" in r)
+    return {
+        "repositories": len(reports),
+        "errors": sum(1 for r in reports if r.get("error")),
+        "skipped": sum(1 for r in reports if r.get("skipped")),
+        "without_default_branch": sum(1 for r in reports if r.get("problem")),
+        **{
+            key: rules.sum_counts(t[key] for t in good)
+            for key in ("worktrees", "branches", "kept_by_reason")
+        },
+        **{
+            key: sum(t[key] for t in good)
+            for key in (
+                "archives_written",
+                "archives_verified",
+                "archives_failed",
+                "archives_pruned",
+                "rescues",
+                "lock_reports",
+                "snapshots",
+                "bytes_freed",
+            )
+        },
+    }
+
+
+# Running -----------------------------------------------------------------------------
+
+
+def fetch(checkout: str, timeout: float) -> Optional[str]:
+    """`git fetch --prune origin`; a problem as a string."""
+    try:
+        result = system.run(
+            system.git_argv(checkout, "fetch", "--prune", "--quiet", "origin"),
+            check=False,
+            timeout=timeout,
+            extra_env={
+                **system.GIT_ENV,
+                "GIT_SSH_COMMAND": os.environ.get("GIT_SSH_COMMAND", "ssh -o BatchMode=yes"),
+            },
+        )
+    except Exception as error:  # a timeout
+        return "fetch: {}".format(error)
+    return "fetch: {}".format(result.stderr.strip()) if result.returncode else None
+
+
+def once(
+    env: Mapping[str, str],
+    cfg: Mapping,
+    checkout: str,
+    override: Optional[str],
+    mode: str,
+    do_fetch: bool,
+    tests: bool = False,
+) -> Dict:
+    """One pass over one repository: `dry-run` and `report` only report; `apply` acts.
+
+    A sweep started by a hook (`hook`) reads `worktrees.sweep` to choose
+    between `report` and `apply`.
+    """
+    fetched = fetch(checkout, float(cfg["fetch_timeout_seconds"])) if do_fetch else None
+    repo = gather.collect(env, cfg, checkout, override, system.now())
+    acting = mode == "apply" or (mode == "hook" and repo.settings.sweep == "apply")
+    p = rules.plan(repo, system.now())
+    sizes = {
+        v.facts.path: system.disk_usage(v.facts.path) for v in p.worktrees if v.action == "remove"
+    }
+    done = execute(env, cfg, p, sizes) if acting else {}
+    return {
+        **repo_report(p, not acting, done, sizes, tests),
+        "mode": "apply" if acting else "dry-run" if mode == "dry-run" else "report",
+        "fetch_problem": fetched,
+    }
+
+
+def sweep_repository(
+    env: Mapping[str, str],
+    cfg: Mapping,
+    checkout: str,
+    override: Optional[str],
+    mode: str,
+    do_fetch: bool,
+) -> Dict:
+    """The whole sweep of one repository, under its lock unless it is a dry run."""
+    found = system.locate(checkout)
+    if found is None:
+        return {"repository": checkout, "error": "{} is not a git checkout".format(checkout)}
+    try:
+        if mode == "dry-run":
+            return once(env, cfg, checkout, override, mode, do_fetch)
+        state_dir = core.repo_state_dir(env, found[0])
+        pending = os.path.join(state_dir, "sweep.pending")
+        with system.sweep_lock(state_dir) as taken:
+            if not taken:
+                system.write_text(pending, rules.iso(system.now()) + "\n")
+                return {
+                    "repository": checkout,
+                    "skipped": "another sweep holds {}; it runs again when it ends".format(
+                        os.path.join(state_dir, "sweep.lock")
+                    ),
+                }
+            report = rerun(env, cfg, checkout, override, mode, do_fetch, pending, 1)
+            import json
+
+            system.write_atomically(
+                os.path.join(state_dir, "last-sweep.json"),
+                json.dumps(report, indent=2, sort_keys=True) + "\n",
+            )
+            return report
+    except (system.CommandFailed, gather.NotARepository) as error:
+        return {"repository": checkout, "error": str(error)}
+
+
+def rerun(
+    env: Mapping[str, str],
+    cfg: Mapping,
+    checkout: str,
+    override: Optional[str],
+    mode: str,
+    do_fetch: bool,
+    pending: str,
+    runs: int,
+) -> Dict:
+    """A pass, then another while a concurrent sweep has left `sweep.pending`."""
+    report = once(env, cfg, checkout, override, mode, do_fetch)
+    if os.path.exists(pending) and runs < MAX_RUNS:
+        os.remove(pending)
+        return rerun(env, cfg, checkout, override, mode, do_fetch, pending, runs + 1)
+    return {**report, "runs": runs}
+
+
+# Text ----------------------------------------------------------------------------------
+
+
+def counted(counts: Mapping[str, int]) -> str:
+    return ", ".join("{} {}".format(k, n) for k, n in counts.items())
+
+
+def summary_line(r: Mapping) -> str:
+    if r.get("error"):
+        return "{}: error: {}\n".format(r["repository"], r["error"])
+    if r.get("skipped"):
+        return "{}: skipped: {}\n".format(r["repository"], r["skipped"])
+    t = r["totals"]
+    verb = "would " if r.get("mode") != "apply" else ""
+    acts = {k: v for k, v in t["worktrees"].items() if k != "keep"}
+    branch_acts = {k: v for k, v in t["branches"].items() if k != "keep"}
+    return "{}{}: {}worktrees {}{}; {}branches {}; {}archives {} written to the local backup {}, {} verified, {} failed, {} pruned, {} rescued; kept {}{}\n".format(
+        r["repository"],
+        " ({})".format(r["default_ref"]) if r.get("default_ref") else "",
+        verb,
+        counted(acts) or "none",
+        " ({} freed)".format(core.human_bytes(t["bytes_freed"])) if t["bytes_freed"] else "",
+        verb,
+        counted(branch_acts) or "none",
+        verb,
+        t["archives_written"],
+        r.get("backup", {}).get("path", ""),
+        t["archives_verified"],
+        t["archives_failed"],
+        t["archives_pruned"],
+        t["rescues"],
+        counted(t["kept_by_reason"]) or "nothing",
+        "; {}".format(r["problem"]) if r.get("problem") else "",
+    )
+
+
+def backup_note(env: Mapping[str, str], t: Mapping, dry: bool) -> Optional[str]:
+    """The last line of a sweep that archives: nothing backs up `~/backups` but its owner."""
+    top = core.archive_top(env)
+    count = t["archives_written"] if dry else t["archives_verified"]
+    return (
+        "{} new archives {}in {}/; back up {}/{}".format(
+            count,
+            "would be written " if dry else "",
+            top,
+            os.path.dirname(top),
+            " once the sweep has run" if dry else "",
+        )
+        if count
+        else None
+    )
+
+
+def totals_line(t: Mapping, dry: bool) -> str:
+    return "total: {} repositories; {}worktrees {}; branches {}; archives {} written, {} verified, {} failed, {} pruned; {} freed; kept {}\n".format(
+        t["repositories"],
+        "would: " if dry else "",
+        counted(t["worktrees"]) or "none",
+        counted(t["branches"]) or "none",
+        t["archives_written"],
+        t["archives_verified"],
+        t["archives_failed"],
+        t["archives_pruned"],
+        core.human_bytes(t["bytes_freed"]),
+        counted(t["kept_by_reason"]) or "nothing",
+    )
+
+
+def status_rows(r: Mapping) -> str:
+    if r.get("error"):
+        return "== {}\nerror: {}\n".format(r["repository"], r["error"])
+    rows = tuple(
+        (
+            "worktree",
+            w["path"],
+            w["branch"] or "(detached)",
+            w["action"],
+            "; ".join(x["detail"] for x in w["reasons"]) or "-",
+            "survives: " + "; ".join(w["survives"]),
+        )
+        for w in r["worktrees"]
+    ) + tuple(
+        (
+            "branch",
+            b["branch"],
+            b["state"],
+            b["action"],
+            "; ".join(x["detail"] for x in b["reasons"]) or "-",
+            "survives: " + "; ".join(b["survives"]),
+        )
+        for b in r["branches"]
+    )
+    return "== {}{}\n{}".format(
+        r["repository"],
+        "  ({})".format(r["problem"]) if r.get("problem") else "",
+        core.table(rows),
+    )
