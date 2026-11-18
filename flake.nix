@@ -60,11 +60,12 @@
         let
           # What the program runs besides Python: git, ps (adv_cmds on macOS,
           # procps elsewhere; a Nix builder can't run macOS's setuid /bin/ps),
-          # and du from coreutils.
+          # du from coreutils, and awk and date for the hooks.
           runtimeInputs = [
             pkgs.git
             pkgs.ps
             pkgs.coreutils
+            pkgs.gawk
           ];
 
           # The one version, `__version__` in worktrees/__init__.py.
@@ -87,8 +88,9 @@
         {
           packages = {
             # `bin/worktrees`, the sh entry point, with the package's paths
-            # written into its `packaged_*` lines. The system's tools come first
-            # on the PATH, so the user's git and ps win where they exist.
+            # written into its `packaged_*` lines. The hooks' functions run in
+            # sh before Python is reached, and the system's tools come first on
+            # the PATH, so the user's git, ps and awk win where they exist.
             worktrees = pkgs.stdenvNoCC.mkDerivation {
               pname = "worktrees";
               inherit version;
@@ -125,8 +127,9 @@
               worktrees = lib.getExe config.packages.worktrees;
             } (builtins.readFile ./checks/package-runs.sh);
 
-            # The unit tests of the core and the rules, and the command tests
-            # over temporary git repositories.
+            # The unit tests of the core and the rules, the command tests over
+            # temporary git repositories, the hooks' tests and the 1,000-ref
+            # fetch timing test.
             tests = pkgs.runCommand "worktrees-tests" {
               nativeBuildInputs = [ pkgs.python3 ] ++ runtimeInputs;
               sourceTree = ./.;

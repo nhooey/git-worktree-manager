@@ -10,8 +10,8 @@ readme = "README.md"
 license = { text = "Apache-2.0" }
 requires-python = ">=3.9"
 
-# `pip install` gives the Python commands; the Nix package and a clone run
-# them through bin/worktrees.
+# `pip install` gives the Python commands alone; the hooks' `sh` functions
+# live in bin/worktrees, which the Nix package and a clone run.
 [project.scripts]
 worktrees = "worktrees.cli:main"
 

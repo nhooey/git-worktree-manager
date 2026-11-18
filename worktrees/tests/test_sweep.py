@@ -363,6 +363,31 @@ class Backfill(Sandbox):
         self.assertIn(tip, self.archives(repo).values())
 
 
+class Rescue(Sandbox):
+    def test_a_branch_deleted_by_hand_is_archived_from_the_log(self):
+        repo = self.cloned()
+        self.wt_json("sweep", repo)
+        self.install_shim(repo)
+        tip = self.local_branch(repo, "doomed")
+        self.git(repo, "branch", "--quiet", "-D", "doomed")
+        updates = [
+            e
+            for e in self.events(repo)
+            if e["event"] == "ref-update" and e["ref"] == "refs/heads/doomed"
+        ]
+        self.assertEqual(updates[-1]["new"], "0" * len(tip))
+        self.assertIn(tip, [e["new"] for e in updates])
+        dry = self.wt_json("sweep", "--dry-run", repo)["repositories"][0]
+        self.assertEqual(
+            [(r["branch"], r["old"], r["would"]) for r in dry["rescues"]], [("doomed", tip, True)]
+        )
+        self.wt_json("sweep", repo)
+        self.assertIn(tip, self.archives(repo).values())
+        self.assertIn("rescue", [e["event"] for e in self.events(repo)])
+        again = self.wt_json("sweep", repo)["repositories"][0]
+        self.assertEqual(again["rescues"], [])
+
+
 class Locks(Sandbox):
     def test_live_and_dead_lock_holders_are_kept_and_reported(self):
         repo = self.cloned()
