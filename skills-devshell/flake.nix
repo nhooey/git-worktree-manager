@@ -1,5 +1,5 @@
 {
-  description = "nix-worktrees dev-shell skill set — an isolated sub-flake invoked at RUNTIME by the root devShell, never a root input. The skill sources (all skills-git skills plus nix-flakes from skills-nix) live only in THIS flake's lock, so the root flake stays a leaf with zero skill inputs and transitive consumers never drag the skill mesh in.";
+  description = "git-worktree-manager dev-shell skill set — an isolated sub-flake invoked at RUNTIME by the root devShell, never a root input. The skill sources (all skills-git skills plus nix-flakes from skills-nix) live only in THIS flake's lock, so the root flake stays a leaf with zero skill inputs and transitive consumers never drag the skill mesh in.";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -45,7 +45,7 @@
     agent-skill-flake.lib.mkDevshellSkillsFlake {
       inherit nixpkgs;
       systems = import inputs.systems;
-      name = "nix-worktrees-skills";
+      name = "git-worktree-manager-skills";
       sources = [
         { source = skills-git; }
         {

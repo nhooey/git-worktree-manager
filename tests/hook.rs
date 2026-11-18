@@ -969,11 +969,10 @@ fn test_a_1000_ref_fetch_logs_each_ref_once() {
 /// The shim's cost on a fetch. A timing budget, run by name in a release
 /// build: `cargo test --release --test hook -- --ignored --nocapture`.
 ///
-/// It holds the budget as the Python test did: the shim's fetch is slower
-/// than the empty hook's by under 5 ms plus two process starts, the
-/// Python's allowance for its two process images, here the shim's `sh`
-/// and the binary it execs. A process start is the mean of 20 runs of
-/// `true`, as the Python took it of `awk`.
+/// The shim's fetch is slower than the empty hook's by under 5 ms plus
+/// two process starts, one for each process image the shim runs: its own
+/// `sh`, and the binary it execs. A process start is the mean of 20 runs
+/// of `true`.
 #[test]
 #[ignore = "a timing budget, run by name with --ignored in a release build"]
 fn test_the_shim_adds_under_5_ms_to_a_1000_ref_fetch() {
