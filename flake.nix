@@ -179,6 +179,7 @@
               // {
                 inherit cargoArtifacts;
                 nativeCheckInputs = [
+                  pkgs.fish
                   pkgs.git
                   pkgs.ps
                 ];
