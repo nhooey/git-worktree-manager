@@ -1,0 +1,27 @@
+[package]
+name = "git-worktree-manager"
+version = "0.2.0"
+edition = "2024"
+description = "Remove git worktrees and branches once their work lands, and lose nothing"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+# The command line: help, usage and error messages, without colour.
+clap = { version = "4.6.8", default-features = false, features = ["std", "derive", "help", "usage", "error-context"] }
+# Every read of a repository, offline: config, refs, worktrees and their
+# locks, status, ignored entries, ancestry, merge bases and tree diffs.
+gix = { version = "0.90.0", default-features = false, features = ["sha1", "status", "dirwalk", "excludes", "index", "revision", "blob-diff"] }
+# Times, durations, and the local clock `ps` gives a start time on.
+jiff = { version = "0.2.46", features = ["serde"] }
+# The lock reasons' two forms.
+regex = "1"
+# Free space on a volume, for the disk floors.
+rustix = { version = "1.1.6", features = ["fs"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# The `<repo>-<hash8>` folder names.
+sha2 = "0.11"
+
+[dev-dependencies]
+tempfile = "3"

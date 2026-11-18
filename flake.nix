@@ -23,6 +23,8 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    crane.url = "github:ipetkov/crane";
+
     treefmt-nix = {
       url = "github:numtide/treefmt-nix";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -84,6 +86,22 @@
               ./worktrees
             ];
           };
+
+          # The Rust crate. crane reads its name and version from Cargo.toml,
+          # and builds its dependencies once for every check below. The
+          # source is the cargo files and the JSON fixtures under src/.
+          craneLib = inputs.crane.mkLib pkgs;
+          crate = craneLib.crateNameFromCargoToml { cargoToml = ./Cargo.toml; };
+          crateArgs = {
+            src = lib.cleanSourceWith {
+              src = ./.;
+              filter =
+                path: type:
+                craneLib.filterCargoSources path type || (lib.hasInfix "/src/" path && lib.hasSuffix ".json" path);
+            };
+            strictDeps = true;
+          };
+          cargoArtifacts = craneLib.buildDepsOnly crateArgs;
         in
         {
           packages = {
@@ -116,6 +134,21 @@
               };
             };
             default = config.packages.worktrees;
+
+            # The Rust binary, under the name in Cargo.toml. Its tests run in
+            # the `crate-tests` check.
+            ${crate.pname} = craneLib.buildPackage (
+              crateArgs
+              // {
+                inherit cargoArtifacts;
+                doCheck = false;
+                meta = {
+                  description = "Remove git worktrees and branches once their work lands, and lose nothing";
+                  license = lib.licenses.asl20;
+                  mainProgram = crate.pname;
+                };
+              }
+            );
           };
 
           checks = {
@@ -134,6 +167,31 @@
               nativeBuildInputs = [ pkgs.python3 ] ++ runtimeInputs;
               sourceTree = ./.;
             } (builtins.readFile ./checks/tests.sh);
+
+            # The Rust package runs: `--version` and `--help`.
+            crate-runs = pkgs.runCommand "${crate.pname}-runs" {
+              program = lib.getExe config.packages.${crate.pname};
+            } (builtins.readFile ./checks/crate-runs.sh);
+
+            # The tests that run git and ps do so in temporary repositories.
+            crate-tests = craneLib.cargoTest (
+              crateArgs
+              // {
+                inherit cargoArtifacts;
+                nativeCheckInputs = [
+                  pkgs.git
+                  pkgs.ps
+                ];
+              }
+            );
+
+            crate-clippy = craneLib.cargoClippy (
+              crateArgs
+              // {
+                inherit cargoArtifacts;
+                cargoClippyExtraArgs = "--all-targets -- --deny warnings";
+              }
+            );
           };
 
           treefmt = {
@@ -142,6 +200,7 @@
               nixfmt.enable = true;
               ruff-format.enable = true;
               ruff-check.enable = true;
+              rustfmt.enable = true;
               shellcheck.enable = true;
             };
             settings.formatter.shellcheck.includes = [
@@ -151,7 +210,14 @@
           };
 
           devshells.default = {
-            packages = [ pkgs.python3 ] ++ runtimeInputs;
+            packages = [
+              pkgs.python3
+              pkgs.cargo
+              pkgs.rustc
+              pkgs.clippy
+              pkgs.rustfmt
+            ]
+            ++ runtimeInputs;
 
             commands = [
               {
@@ -163,7 +229,7 @@
               {
                 category = "dev";
                 name = "tests";
-                help = "Run every test (python3 -m unittest)";
+                help = "Run the Python tests (python3 -m unittest); cargo test runs the crate's";
                 command = ''cd "$PRJ_ROOT" && exec python3 -m unittest discover --start-directory worktrees/tests --top-level-directory . "$@"'';
               }
             ];
