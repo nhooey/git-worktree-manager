@@ -1,0 +1,24 @@
+{
+  "keep": [
+    ".env",
+    ".env.*",
+    ".envrc",
+    ".envrc.local",
+    "*.local.*",
+    ".claude/settings.local.json",
+    ".idea/",
+    "*.iml",
+    ".superpowers/",
+    "HANDOFF.md",
+    "*.tfplan",
+    "tfplan*",
+    "*.tfstate*",
+    ".xtdb/",
+    ".nrepl-port",
+    "*-workspace/",
+    ".gstack/",
+    "reports/",
+    ".worktree-keep",
+    ".worktreeinclude"
+  ]
+}
