@@ -51,8 +51,37 @@ fn exit_code(status: std::process::ExitStatus) -> i32 {
         .unwrap_or(-1)
 }
 
-fn run_in(dir: &Path, program: &OsStr, args: &[OsString]) -> io::Result<Completed> {
-    Command::new(program)
+/// The variables that point git at a repository, as `git rev-parse
+/// --local-env-vars` lists them. A hook inherits some of them, and they
+/// would win over the folder a `git` child runs in: an inherited
+/// `GIT_OBJECT_DIRECTORY` would let the compare pass find in the clone the
+/// objects the backup lacks.
+const GIT_LOCAL_VARIABLES: [&str; 15] = [
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_CONFIG",
+    "GIT_CONFIG_PARAMETERS",
+    "GIT_CONFIG_COUNT",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_IMPLICIT_WORK_TREE",
+    "GIT_GRAFT_FILE",
+    "GIT_INDEX_FILE",
+    "GIT_NO_REPLACE_OBJECTS",
+    "GIT_REPLACE_REF_BASE",
+    "GIT_PREFIX",
+    "GIT_SHALLOW_FILE",
+    "GIT_COMMON_DIR",
+];
+
+/// `program` in `dir`, without the variables `unset`.
+fn run_in(dir: &Path, program: &OsStr, args: &[OsString], unset: &[&str]) -> io::Result<Completed> {
+    unset
+        .iter()
+        .fold(Command::new(program), |mut command, name| {
+            command.env_remove(name);
+            command
+        })
         .args(args)
         .current_dir(dir)
         .envs(QUIET_ENGLISH)
@@ -65,13 +94,15 @@ fn run_in(dir: &Path, program: &OsStr, args: &[OsString]) -> io::Result<Complete
         })
 }
 
-/// `git` without optional locks and with paths unquoted.
-fn git_args(args: &[OsString]) -> Vec<OsString> {
-    ["--no-optional-locks", "-c", "core.quotePath=false"]
+/// `git` in `dir`, on the repository there whatever the environment says,
+/// without optional locks and with paths unquoted.
+fn run_git(dir: &Path, args: &[OsString]) -> io::Result<Completed> {
+    let args: Vec<OsString> = ["--no-optional-locks", "-c", "core.quotePath=false"]
         .into_iter()
         .map(OsString::from)
         .chain(args.iter().cloned())
-        .collect()
+        .collect();
+    run_in(dir, OsStr::new("git"), &args, &GIT_LOCAL_VARIABLES)
 }
 
 fn make_parent(path: &Path) -> Result<(), Failure> {
@@ -117,8 +148,7 @@ impl System for Real {
     }
 
     fn git(&self, dir: &Path, args: &[OsString]) -> Result<Completed, Failure> {
-        run_in(dir, OsStr::new("git"), &git_args(args))
-            .map_err(|error| unreadable(&error, Path::new("git")))
+        run_git(dir, args).map_err(|error| unreadable(&error, Path::new("git")))
     }
 
     fn process_start(&self, pid: u32) -> Result<Option<Timestamp>, Failure> {
@@ -126,6 +156,7 @@ impl System for Real {
             Path::new("/"),
             OsStr::new("ps"),
             &super::args(["-o", "lstart=", "-p", &pid.to_string()]),
+            &[],
         )
         .map_err(|error| unreadable(&error, Path::new("ps")))?;
         // `ps` exits 1 when no process has the pid.
@@ -201,8 +232,7 @@ impl System for Real {
     }
 
     fn git_act(&mut self, dir: &Path, args: &[OsString]) -> Result<Completed, Failure> {
-        run_in(dir, OsStr::new("git"), &git_args(args))
-            .map_err(|error| step_failed(&error, Path::new("git")))
+        run_git(dir, args).map_err(|error| step_failed(&error, Path::new("git")))
     }
 
     fn run(
@@ -211,7 +241,7 @@ impl System for Real {
         program: &OsStr,
         args: &[OsString],
     ) -> Result<Completed, Failure> {
-        run_in(dir, program, args).map_err(|error| step_failed(&error, Path::new(program)))
+        run_in(dir, program, args, &[]).map_err(|error| step_failed(&error, Path::new(program)))
     }
 
     fn spawn_detached(
@@ -330,5 +360,29 @@ impl System for Real {
     fn warn(&mut self, message: &str) {
         // Nothing is left to report a failure to write standard error to.
         let _ = writeln!(io::stderr(), "{PROGRAM}: {message}");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_the_local_variables_are_gits() {
+        let listed = run_in(
+            Path::new("/"),
+            OsStr::new("git"),
+            &super::super::args(["rev-parse", "--local-env-vars"]),
+            &[],
+        )
+        .expect("git runs");
+        let listed = String::from_utf8_lossy(&listed.stdout).into_owned();
+        let set = |names: Vec<&str>| -> std::collections::BTreeSet<String> {
+            names.into_iter().map(str::to_owned).collect()
+        };
+        assert_eq!(
+            set(listed.lines().collect()),
+            set(GIT_LOCAL_VARIABLES.to_vec())
+        );
     }
 }
