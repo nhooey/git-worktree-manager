@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "worktrees"
+dynamic = ["version"]
+description = "Remove git worktrees and branches once their work lands, and lose nothing"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.9"
+
+# `pip install` gives the Python commands alone; the hooks' `sh` functions
+# live in bin/worktrees, which the Nix package and a clone run.
+[project.scripts]
+worktrees = "worktrees.cli:main"
+
+[tool.setuptools]
+packages = ["worktrees"]
+
+[tool.setuptools.package-data]
+worktrees = ["defaults.json"]
+
+[tool.setuptools.dynamic]
+version = { attr = "worktrees.__version__" }
+
+[tool.ruff]
+line-length = 100
+# macOS's /usr/bin/python3 is 3.9, and `python3 -m worktrees` runs on it.
+target-version = "py39"
+
+[tool.ruff.lint]
+# Named rather than left to ruff's defaults, which change between releases.
+select = ["E4", "E7", "E9", "F", "I", "B"]
