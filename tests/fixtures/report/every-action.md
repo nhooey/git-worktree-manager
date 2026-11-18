@@ -32,6 +32,7 @@ The riskiest first.
 | delete | done | `/r/app` | branch `fix` | `branch.landed` | merged `refs/remotes/origin/main` |
 | delete | not attempted | `/r/app` | branch `skipped` | `branch.landed` | merged `refs/remotes/origin/main` |
 | rescue | done | `/r/app` | branch `lost` | — | tip `5555555555555555555555555555555555555555`<br/>archive `refs/archive/lost/2026-11-19T09:12:00Z` verified |
+| delete | done | `/r/app` | build output `/c/app-1a2b3c4d/wt/gone-0f0f0f0f` | — | back-pointer to `/r/app.worktrees/gone`, which git no longer lists |
 | prune | done | `/r/app` | worktree `/r/app.worktrees/gone` | `worktree.prune` | — |
 
 ## Kept
@@ -45,6 +46,7 @@ By rule id, then reason code.
 | `branch.in-review` | `in-review`: refs/remotes/origin/review exists<br/>`checked-out`: checked out in /r/app.worktrees/draft | `/r/app` | branch `review` | pushed `refs/remotes/origin/review` |
 | `worktree.keep` | `not-landed`: HEAD is not merged into refs/remotes/origin/main | `/r/app` | worktree `/r/app.worktrees/draft` | pushed `refs/remotes/origin/review` |
 | `worktree.keep` | `archive-failed`: branch preview/spike stays: archive refs/archive/preview/spike/2026-11-19T09:12:00Z failed its compare: rev-list: missing object | `/r/app` | worktree `/r/app.worktrees/spike` | **on no remote** |
+| — | no back-pointer, so nothing says whose it is | `/r/app` | build output `/c/app-1a2b3c4d/wt/stray` | — |
 
 Not listed: 7 kept only for `main-worktree`, `no-default-branch`, `default-branch` or `checked-out`.
 

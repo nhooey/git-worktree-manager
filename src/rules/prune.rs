@@ -9,11 +9,49 @@ use std::path::{Path, PathBuf};
 use jiff::Timestamp;
 
 use crate::backup;
-use crate::model::Oid;
 use crate::model::facts::RepositoryFacts;
-use crate::model::ids::WorktreeAction;
+use crate::model::ids::{ReasonCode, RuleId, WorktreeAction};
 use crate::model::plan::{Plan, WorktreePlan};
+use crate::model::{Note, Oid};
 use crate::rules::survival;
+
+/// The plan with each prune whose `HEAD` can't be read kept instead, with
+/// why: nothing says which commit it holds, so nothing can be archived
+/// before its record goes. A `HEAD` on a branch that doesn't exist has no
+/// commit to lose, and is still pruned; where the facts can't tell the
+/// two apart, the record stays.
+pub fn keep_unreadable_heads(plan: Plan, facts: &RepositoryFacts) -> Plan {
+    let unborn = |w: &WorktreePlan| {
+        w.branch
+            .as_ref()
+            .is_some_and(|b| facts.branches.iter().all(|f| &f.name != b))
+    };
+    let worktrees =
+        plan.worktrees
+            .into_iter()
+            .map(|w| {
+                match w.action == WorktreeAction::Prune && w.head.is_none() && !unborn(&w) {
+            true => WorktreePlan {
+                action: WorktreeAction::Keep,
+                rule: RuleId::WorktreeKeep,
+                reasons: w
+                    .reasons
+                    .iter()
+                    .cloned()
+                    .chain([Note::new(
+                        ReasonCode::Broken,
+                        "its HEAD can't be read, so the commit it holds can't be archived before \
+                         its record goes",
+                    )])
+                    .collect(),
+                ..w
+            },
+            false => w,
+        }
+            })
+            .collect();
+    Plan { worktrees, ..plan }
+}
 
 /// The archive a pruned worktree's `HEAD` needs before it goes.
 #[derive(Clone, Debug, PartialEq, Eq)]

@@ -6,14 +6,12 @@
 //! runs no `git`, and does nothing before its state check that a call in
 //! another state would pay for.
 
-use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 use crate::commands::Status;
 use crate::hook::{self, COMMITTED};
-use crate::model::ids::CommandName;
 use crate::names::Variable;
-use crate::system::{Failure, System, args};
+use crate::system::{Failure, System};
 
 #[derive(clap::Subcommand, Clone, Debug, PartialEq, Eq)]
 #[command(subcommand_value_name = "hook")]
@@ -94,24 +92,6 @@ fn append(system: &mut impl System, log: Option<&Path>, lines: &[String]) -> Res
 /// detached, and doesn't wait. It runs in `/`, since git's folder is often
 /// a linked worktree the sweep may remove.
 fn start_sweep(system: &mut impl System) -> Result<(), Failure> {
-    let program = system.executable()?;
     let repository = system.current_dir()?;
-    system
-        .spawn_detached(
-            Path::new("/"),
-            &program,
-            &args([
-                OsStr::new(CommandName::Sweep.as_str()),
-                OsStr::new("--unattended"),
-                OsStr::new("--repository"),
-                repository.as_os_str(),
-            ]),
-            &[],
-        )
-        .map_err(|failure| {
-            Failure::step_failed(format!(
-                "starting {} --unattended: {failure}",
-                CommandName::Sweep
-            ))
-        })
+    crate::sweep::start_unattended(system, &repository)
 }

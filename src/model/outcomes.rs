@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::model::ids::OutcomeKind;
-use crate::model::report::{ArchiveReport, Compare, RescueReport};
+use crate::model::report::{ArchiveReport, BuildOutputReport, Compare, RescueReport};
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Outcomes {
@@ -28,6 +28,10 @@ pub struct Outcomes {
     pub compares: Vec<Compare>,
     /// Branches deleted by hand that the run archived from the log.
     pub rescues: Vec<RescueReport>,
+    /// The build root's `wt/<id>/` folders no listed worktree owns, and
+    /// what became of each.
+    #[serde(default)]
+    pub build_output: Vec<BuildOutputReport>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

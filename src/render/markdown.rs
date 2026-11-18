@@ -10,7 +10,9 @@ use crate::model::Note;
 use crate::model::ids::{
     AttentionCode, OutcomeKind, ReasonCode, RuleId, SurvivalKind, WorktreeAction,
 };
-use crate::model::report::{Report, RepositoryReport, RescueReport};
+use crate::model::report::{
+    BuildOutputAction, BuildOutputReport, Report, RepositoryReport, RescueReport,
+};
 use crate::report::Total;
 
 pub(super) fn render(report: &Report) -> String {
@@ -117,6 +119,21 @@ fn changes(report: &Report) -> Vec<String> {
                 };
                 (rank, rescue_row(r, x))
             }))
+            .chain(
+                r.build_output
+                    .iter()
+                    .filter(|b| {
+                        b.action == BuildOutputAction::Delete || b.outcome == OutcomeKind::Failed
+                    })
+                    .map(move |b| {
+                        let rank = if b.outcome == OutcomeKind::Failed {
+                            0
+                        } else {
+                            4
+                        };
+                        (rank, build_output_row(r, b))
+                    }),
+            )
     }));
     section(
         "Changes",
@@ -183,6 +200,35 @@ fn rescue_row(r: &RepositoryReport, x: &RescueReport) -> Vec<String> {
     ]
 }
 
+/// A build root's `wt/<id>/`: the folder its back-pointer names, or that
+/// it has none, and any error.
+fn build_output_row(r: &RepositoryReport, b: &BuildOutputReport) -> Vec<String> {
+    let detail: Vec<String> = once(build_output_owner(b))
+        .chain(b.error.as_deref().map(|e| format!("error: {}", text(e))))
+        .collect();
+    vec![
+        b.action.to_string(),
+        b.outcome.to_string(),
+        repository(r),
+        format!("build output {}", code(&b.path.display().to_string())),
+        "—".to_owned(),
+        lines(detail),
+    ]
+}
+
+fn build_output_owner(b: &BuildOutputReport) -> String {
+    match (&b.worktree, &b.error) {
+        (Some(worktree), _) => format!(
+            "back-pointer to {}, which git no longer lists",
+            code(&worktree.display().to_string())
+        ),
+        (None, Some(_)) => {
+            "its back-pointer couldn't be read, so nothing says whose it is".to_owned()
+        }
+        (None, None) => "no back-pointer, so nothing says whose it is".to_owned(),
+    }
+}
+
 /// The kept items a person may read, by rule id and then reason code,
 /// and how many routine ones are left out.
 fn kept(report: &Report) -> Vec<String> {
@@ -209,6 +255,21 @@ fn kept(report: &Report) -> Vec<String> {
         ];
         (rank, row)
     }));
+    let build_output = report.repositories.iter().flat_map(|r| {
+        r.build_output
+            .iter()
+            .filter(|b| b.action == BuildOutputAction::Keep && b.outcome != OutcomeKind::Failed)
+            .map(move |b| {
+                vec![
+                    "—".to_owned(),
+                    build_output_owner(b),
+                    repository(r),
+                    format!("build output {}", code(&b.path.display().to_string())),
+                    "—".to_owned(),
+                ]
+            })
+    });
+    let rows: Vec<Vec<String>> = rows.into_iter().chain(build_output).collect();
     let routine: Vec<String> = ReasonCode::ALL
         .iter()
         .filter(|&&c| routine(c))
@@ -243,11 +304,12 @@ fn kept(report: &Report) -> Vec<String> {
     .collect()
 }
 
-/// A repository with no problem, no rescue, no archive, and nothing but
-/// items kept quietly.
+/// A repository with no problem, no rescue, no archive, no build output to
+/// report, and nothing but items kept quietly.
 fn nothing_to_do(r: &RepositoryReport) -> bool {
     r.problem.is_none()
         && r.rescues.is_empty()
+        && r.build_output.is_empty()
         && r.branches.iter().all(|b| b.archive.is_none())
         && items(r).all(|i| i.quiet())
 }

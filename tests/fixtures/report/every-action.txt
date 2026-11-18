@@ -51,6 +51,10 @@ sweep, 2026-11-19T09:12:00Z
   branch    rescue  done                                 lost
       tip 5555555555555555555555555555555555555555
       archive refs/archive/lost/2026-11-19T09:12:00Z verified
+  build     delete  done                                 /c/app-1a2b3c4d/wt/gone-0f0f0f0f
+      worktree /r/app.worktrees/gone
+  build     keep                                         /c/app-1a2b3c4d/wt/stray
+      no back-pointer, so nothing says whose it is
   backup /h/backups/git-archive/n/app.git: archived 3, verified 2, failed 1
   compare failed: refs/archive/preview/spike/2026-11-19T09:12:00Z
     eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee: rev-list: missing object

@@ -1,5 +1,5 @@
 //! The command line, run as the binary: every command's help, the version,
-//! bad usage, and the commands not built yet.
+//! bad usage, and a failure's shape.
 
 mod sandbox;
 
@@ -97,26 +97,41 @@ fn test_bad_usage_exits_2() {
 }
 
 #[test]
-fn test_an_unbuilt_command_exits_1_and_prints_nothing() {
-    let s = Sandbox::new();
-    for (args, name, _) in commands::EXAMPLES.iter().filter(|(_, _, built)| !built) {
-        let ran = s.run(args, None, &[]);
-        assert_eq!((ran.code, ran.stdout.as_str()), (1, ""), "{args:?}");
-        assert_eq!(ran.stderr, format!("{PROGRAM}: {name} is not built yet\n"));
-    }
+fn test_every_command_is_built() {
+    let unbuilt: Vec<_> = commands::EXAMPLES
+        .iter()
+        .filter(|(_, _, built)| !built)
+        .map(|(_, name, _)| name)
+        .collect();
+    assert!(unbuilt.is_empty(), "{unbuilt:?}");
 }
 
 #[test]
 fn test_a_failure_under_json_prints_the_error_shape() {
-    let ran = Sandbox::new().run(&["sweep", "--dry-run", "--format", "json"], None, &[]);
+    let ran = Sandbox::new().run(
+        &[
+            "sweep",
+            "--dry-run",
+            "--repositories",
+            "missing.json",
+            "--format",
+            "json",
+        ],
+        None,
+        &[],
+    );
     assert_eq!(ran.code, 1, "{}", ran.stderr);
+    assert_eq!(
+        ran.stderr,
+        format!("{PROGRAM}: missing.json: no such file\n")
+    );
     let printed: serde_json::Value = serde_json::from_str(&ran.stdout).expect("JSON");
     assert_eq!(
         printed,
         serde_json::json!({
             "schema": 1,
             "command": "sweep",
-            "error": {"code": "not-built", "detail": "sweep is not built yet"},
+            "error": {"code": "unreadable", "detail": "missing.json: no such file"},
         })
     );
 }

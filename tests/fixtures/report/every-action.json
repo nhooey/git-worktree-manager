@@ -434,6 +434,20 @@
           "outcome": "done"
         }
       ],
+      "build_output": [
+        {
+          "path": "/c/app-1a2b3c4d/wt/gone-0f0f0f0f",
+          "worktree": "/r/app.worktrees/gone",
+          "action": "delete",
+          "outcome": "done"
+        },
+        {
+          "path": "/c/app-1a2b3c4d/wt/stray",
+          "worktree": null,
+          "action": "keep",
+          "outcome": "none"
+        }
+      ],
       "totals": {
         "archives.failed": 1,
         "archives.planned": 0,
@@ -502,6 +516,7 @@
         "compares": []
       },
       "rescues": [],
+      "build_output": [],
       "totals": {
         "archives.failed": 0,
         "archives.planned": 0,
@@ -571,6 +586,7 @@
         "compares": []
       },
       "rescues": [],
+      "build_output": [],
       "totals": {
         "archives.failed": 0,
         "archives.planned": 0,
@@ -638,6 +654,7 @@
         "compares": []
       },
       "rescues": [],
+      "build_output": [],
       "totals": {
         "archives.failed": 0,
         "archives.planned": 0,

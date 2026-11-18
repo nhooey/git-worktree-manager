@@ -11,7 +11,8 @@ use git_worktree_manager::model::ids::{
 use git_worktree_manager::model::outcomes::{Outcome, Outcomes};
 use git_worktree_manager::model::plan::{BranchPlan, Plan, WorktreePlan};
 use git_worktree_manager::model::report::{
-    ArchiveReport, Compare, DefaultRef, RepositoryReport, RescueReport, Survival, Totals,
+    ArchiveReport, BuildOutputAction, BuildOutputReport, Compare, DefaultRef, RepositoryReport,
+    RescueReport, Survival, Totals,
 };
 use git_worktree_manager::model::{Note, Oid};
 use git_worktree_manager::report::{self, Total};
@@ -177,6 +178,7 @@ fn done() -> Outcomes {
         head_archives: BTreeMap::new(),
         compares: vec![compare(true)],
         rescues: vec![],
+        build_output: vec![],
     }
 }
 
@@ -799,6 +801,220 @@ fn test_a_repository_that_could_not_be_read() {
     assert_eq!(run.totals[Total::Problems.as_str()], 1);
     assert_eq!(run.totals[Total::Repositories.as_str()], 2);
     assert_eq!(run.totals[Total::BranchesDelete.as_str()], 2);
+}
+
+/// Round 1 with `fix`'s removal and deletion failed, and round 2 with
+/// both kept: the later round's word, but for the failures it doesn't
+/// undo.
+fn failed_then_kept() -> RepositoryReport {
+    let earlier = report::of(
+        &plan(),
+        &Outcomes {
+            worktrees: BTreeMap::from([
+                (PathBuf::from(FIX), Outcome::failed("changed")),
+                (PathBuf::from(SPIKE), Outcome::done()),
+            ]),
+            branches: BTreeMap::from([
+                ("fix".to_owned(), Outcome::failed("its tip moved")),
+                ("spike".to_owned(), Outcome::done()),
+            ]),
+            build_output: vec![build_output(BuildOutputAction::Delete, OutcomeKind::Failed)],
+            ..done()
+        },
+    );
+    let kept = Plan {
+        worktrees: vec![
+            worktree(REPO, "main", WorktreeAction::Keep),
+            worktree(FIX, "fix", WorktreeAction::Keep),
+        ],
+        branches: vec![branch(
+            "fix",
+            BranchState::LocalOnly,
+            RuleId::BranchLocalOnly,
+            None,
+        )],
+        ..plan()
+    };
+    let later = report::of(
+        &kept,
+        &Outcomes {
+            dry_run: false,
+            build_output: vec![build_output(BuildOutputAction::Keep, OutcomeKind::None)],
+            ..Outcomes::default()
+        },
+    );
+    report::merged(&earlier, &later)
+}
+
+fn build_output(action: BuildOutputAction, outcome: OutcomeKind) -> BuildOutputReport {
+    BuildOutputReport {
+        path: "/c/app/wt/fix-11111111".into(),
+        worktree: Some(FIX.into()),
+        action,
+        outcome,
+        error: (outcome == OutcomeKind::Failed).then(|| "changed".to_owned()),
+    }
+}
+
+#[test]
+fn test_a_merge_keeps_a_worktrees_failure_the_later_round_kept() {
+    let both = failed_then_kept();
+    let fix = both
+        .worktrees
+        .iter()
+        .find(|w| w.path.as_path() == std::path::Path::new(FIX))
+        .expect("fix");
+    assert_eq!(
+        (fix.outcome, fix.error.as_deref()),
+        (OutcomeKind::Failed, Some("changed"))
+    );
+}
+
+#[test]
+fn test_a_merge_keeps_a_branchs_failure_the_later_round_kept() {
+    let both = failed_then_kept();
+    let fix = both.branches.iter().find(|b| b.name == "fix").expect("fix");
+    assert_eq!(
+        (fix.outcome, fix.error.as_deref()),
+        (OutcomeKind::Failed, Some("its tip moved"))
+    );
+}
+
+#[test]
+fn test_a_merge_keeps_build_outputs_failure_the_later_round_kept() {
+    let both = failed_then_kept();
+    assert_eq!(both.build_output[0].outcome, OutcomeKind::Failed);
+    assert_eq!(both.totals[Total::Failed.as_str()], 3);
+}
+
+/// A rescue that failed stays failed after a round that only planned it
+/// again, and gives way to one that did it.
+#[test]
+fn test_a_merge_keeps_a_rescues_failure_until_a_later_round_does_it() {
+    let with = |rescue: RescueReport| {
+        report::of(
+            &plan(),
+            &Outcomes {
+                rescues: vec![rescue],
+                ..done()
+            },
+        )
+    };
+    let failed = with(rescue(Outcome::failed("push refused")));
+    let planned = with(RescueReport {
+        outcome: OutcomeKind::Planned,
+        error: None,
+        ..rescue(Outcome::done())
+    });
+    let kept = report::merged(&failed, &planned);
+    assert_eq!(
+        (kept.rescues.len(), kept.rescues[0].outcome),
+        (1, OutcomeKind::Failed)
+    );
+    assert_eq!(kept.rescues[0].error.as_deref(), Some("push refused"));
+    assert_eq!(kept.totals[Total::Failed.as_str()], 1);
+    let done = report::merged(&failed, &with(rescue(Outcome::done())));
+    assert_eq!(
+        (done.rescues.len(), done.rescues[0].outcome),
+        (1, OutcomeKind::Done)
+    );
+    assert_eq!(done.totals[Total::Failed.as_str()], 0);
+}
+
+/// A sweep that runs again keeps what each round did: the later round's
+/// word on an item both list, and every item only the earlier lists.
+#[test]
+fn test_two_rounds_merge_into_one_report() {
+    // Round 1: `spike` and its archive done, `fix`'s removal failed.
+    let earlier = report::of(
+        &plan(),
+        &Outcomes {
+            worktrees: BTreeMap::from([
+                (PathBuf::from(FIX), Outcome::failed("dirty")),
+                (PathBuf::from(SPIKE), Outcome::done()),
+            ]),
+            branches: BTreeMap::from([("spike".to_owned(), Outcome::done())]),
+            ..done()
+        },
+    );
+    // Round 2: `fix` and `gone` removed; `spike` is no longer there.
+    let later_plan = Plan {
+        worktrees: vec![
+            worktree(REPO, "main", WorktreeAction::Keep),
+            worktree(FIX, "fix", WorktreeAction::Remove),
+            worktree(GONE, "gone", WorktreeAction::Remove),
+        ],
+        branches: plan()
+            .branches
+            .into_iter()
+            .filter(|b| b.name != "spike")
+            .collect(),
+        ..plan()
+    };
+    let later = report::of(
+        &later_plan,
+        &Outcomes {
+            worktrees: [FIX, GONE]
+                .into_iter()
+                .map(|p| (PathBuf::from(p), Outcome::done()))
+                .collect(),
+            branches: BTreeMap::from([("fix".to_owned(), Outcome::done())]),
+            archives: BTreeMap::new(),
+            compares: vec![],
+            ..done()
+        },
+    );
+    let both = report::merged(&earlier, &later);
+    let mut rows = outcomes_of(&both);
+    rows.sort_by(|a, b| a.0.cmp(&b.0));
+    assert_eq!(
+        rows,
+        [
+            row(
+                REPO,
+                Action::Worktree(WorktreeAction::Keep),
+                OutcomeKind::None
+            ),
+            row(
+                FIX,
+                Action::Worktree(WorktreeAction::Remove),
+                OutcomeKind::Done
+            ),
+            row(
+                GONE,
+                Action::Worktree(WorktreeAction::Remove),
+                OutcomeKind::Done
+            ),
+            row(
+                SPIKE,
+                Action::Worktree(WorktreeAction::Remove),
+                OutcomeKind::Done
+            ),
+            row(
+                "fix",
+                Action::Branch(BranchAction::Delete),
+                OutcomeKind::Done
+            ),
+            row(
+                "main",
+                Action::Branch(BranchAction::Keep),
+                OutcomeKind::None
+            ),
+            row(
+                "spike",
+                Action::Branch(BranchAction::Delete),
+                OutcomeKind::Done
+            ),
+        ]
+    );
+    assert_eq!(both.totals[Total::Failed.as_str()], 0);
+    assert_eq!(both.totals[Total::WorktreesRemove.as_str()], 3);
+    assert_eq!(both.totals[Total::ArchivesWritten.as_str()], 1);
+    let run = report::run(CommandName::Sweep, false, time(), vec![both]);
+    assert_eq!(
+        run.backup_note.as_deref(),
+        Some("1 new archive in ~/backups/git-archive/; back up ~/backups/")
+    );
 }
 
 #[test]

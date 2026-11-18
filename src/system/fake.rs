@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
 
-use super::{Completed, Failure, FileKind, Metadata, System, is_inside};
+use super::{Completed, Failure, FileId, FileKind, Metadata, System, is_inside};
 use crate::environment::Environment;
 
 /// What the fake holds at a path.
@@ -60,6 +60,10 @@ pub enum Act {
         path: PathBuf,
     },
     Lock {
+        path: PathBuf,
+    },
+    /// Waited for the lock, which the process holding it let go.
+    WaitLock {
         path: PathBuf,
     },
 }
@@ -329,6 +333,21 @@ impl System for Fake {
         })
     }
 
+    /// The fake's paths are its files: one path, one identity, from a hash
+    /// of the absolute path.
+    fn file_id(&self, path: &Path) -> Result<Option<FileId>, Failure> {
+        use std::hash::{Hash, Hasher};
+        let path = self.absolute(path);
+        Ok(self.metadata(&path)?.map(|_| {
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            path.hash(&mut hasher);
+            FileId {
+                device: 0,
+                inode: hasher.finish(),
+            }
+        }))
+    }
+
     fn list_dir(&self, path: &Path) -> Result<Vec<OsString>, Failure> {
         let path = self.absolute(path);
         let names: BTreeSet<OsString> = self
@@ -474,6 +493,14 @@ impl System for Fake {
         let path = self.absolute(path);
         self.record(Act::Lock { path: path.clone() });
         Ok((!self.held.contains(&path)).then_some(()))
+    }
+
+    /// The process holding the lock ends while the fake waits.
+    fn wait_lock(&mut self, path: &Path) -> Result<Self::Held, Failure> {
+        let path = self.absolute(path);
+        self.record(Act::WaitLock { path: path.clone() });
+        self.held.remove(&path);
+        Ok(())
     }
 
     fn print(&mut self, text: &str) -> Result<(), Failure> {

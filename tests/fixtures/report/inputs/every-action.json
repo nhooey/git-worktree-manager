@@ -361,6 +361,20 @@
             "archive": { "ref": "refs/archive/lost/2026-11-19T09:12:00Z", "state": "verified" },
             "outcome": "done"
           }
+        ],
+        "build_output": [
+          {
+            "path": "/c/app-1a2b3c4d/wt/gone-0f0f0f0f",
+            "worktree": "/r/app.worktrees/gone",
+            "action": "delete",
+            "outcome": "done"
+          },
+          {
+            "path": "/c/app-1a2b3c4d/wt/stray",
+            "worktree": null,
+            "action": "keep",
+            "outcome": "none"
+          }
         ]
       }
     },

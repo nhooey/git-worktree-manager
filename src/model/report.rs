@@ -51,6 +51,8 @@ pub struct RepositoryReport {
     /// None when the repository couldn't be read.
     pub backup: Option<BackupReport>,
     pub rescues: Vec<RescueReport>,
+    /// Each `wt/<id>/` of the build root that no listed worktree owns.
+    pub build_output: Vec<BuildOutputReport>,
     pub totals: Totals,
 }
 
@@ -187,6 +189,32 @@ pub struct RescueReport {
     pub archive: Option<ArchiveReport>,
     pub outcome: OutcomeKind,
     /// Present only when `outcome` is `failed`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+string_enum! {
+    /// What becomes of a build root's `wt/<id>/` that no listed worktree
+    /// owns.
+    pub enum BuildOutputAction {
+        /// Its back-pointer names a folder git no longer lists.
+        Delete => "delete",
+        /// It has no back-pointer, so nothing says whose it is.
+        Keep => "keep",
+    }
+}
+
+/// One `wt/<id>/` of the build root that no listed worktree owns.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BuildOutputReport {
+    pub path: PathBuf,
+    /// The folder its `WORKTREE` back-pointer names; None without one.
+    pub worktree: Option<PathBuf>,
+    pub action: BuildOutputAction,
+    pub outcome: OutcomeKind,
+    /// Why it failed; or, on one kept because what owns it can't be told,
+    /// why, whose `outcome` is `failed` when the run acted and `none` when
+    /// it only planned.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }

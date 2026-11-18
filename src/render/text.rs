@@ -5,7 +5,10 @@
 use std::iter::once;
 
 use super::{Item, counts, details, items, printable};
-use crate::model::report::{BackupReport, Report, RepositoryReport, RescueReport};
+use crate::model::ids::OutcomeKind;
+use crate::model::report::{
+    BackupReport, BuildOutputReport, Report, RepositoryReport, RescueReport,
+};
 use crate::report::Total;
 
 /// The columns a line fills before it wraps.
@@ -53,6 +56,7 @@ fn repository(r: &RepositoryReport) -> Vec<String> {
         .filter(|i| !i.quiet())
         .map(|i| item_row(&i))
         .chain(r.rescues.iter().map(rescue_row))
+        .chain(r.build_output.iter().map(build_output_row))
         .collect();
     let lines = aligned(&rows);
     wrap(&headline(r), "", "    ")
@@ -153,6 +157,38 @@ fn rescue_row(r: &RescueReport) -> Row {
             r.outcome.to_string(),
             String::new(),
             whole(&r.branch),
+        ],
+        notes,
+    }
+}
+
+/// A build root's `wt/<id>/` no listed worktree owns: the folder its
+/// back-pointer names, or that it has none.
+fn build_output_row(b: &BuildOutputReport) -> Row {
+    let owner = match (&b.worktree, &b.error) {
+        (Some(worktree), _) => format!("worktree {}", whole(&worktree.display().to_string())),
+        (None, Some(_)) => {
+            "its back-pointer couldn't be read, so nothing says whose it is".to_owned()
+        }
+        (None, None) => "no back-pointer, so nothing says whose it is".to_owned(),
+    };
+    let notes = once(owner)
+        .chain(
+            b.error
+                .as_deref()
+                .map(|e| format!("error: {}", printable(e))),
+        )
+        .collect();
+    Row {
+        cells: [
+            "build".to_owned(),
+            b.action.to_string(),
+            match b.outcome {
+                OutcomeKind::None => String::new(),
+                outcome => outcome.to_string(),
+            },
+            String::new(),
+            whole(&b.path.display().to_string()),
         ],
         notes,
     }

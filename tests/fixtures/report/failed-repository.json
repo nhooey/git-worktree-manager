@@ -13,6 +13,7 @@
       "branches": [],
       "backup": null,
       "rescues": [],
+      "build_output": [],
       "totals": {
         "archives.failed": 0,
         "archives.planned": 0,
@@ -39,6 +40,7 @@
       "branches": [],
       "backup": null,
       "rescues": [],
+      "build_output": [],
       "totals": {
         "archives.failed": 0,
         "archives.planned": 0,

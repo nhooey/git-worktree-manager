@@ -9,7 +9,9 @@ use super::commits::Ancestry;
 use crate::model::facts::{BranchFacts, UpstreamFacts};
 use crate::system::Failure;
 
-/// Every local branch and the commit it points at.
+/// Every local branch and the commit it points at. A symbolic ref under
+/// `refs/heads/` is no branch of its own and is left out: deleting it as a
+/// branch would delete the branch it names.
 pub fn tips(repository: &gix::Repository) -> Result<Vec<(FullName, ObjectId)>, Failure> {
     let failed = super::failing(repository.git_dir());
     repository
@@ -19,13 +21,17 @@ pub fn tips(repository: &gix::Repository) -> Result<Vec<(FullName, ObjectId)>, F
         .map_err(|e| failed(&e))?
         .map(|reference| {
             let mut reference = reference.map_err(|e| failed(&e))?;
+            if reference.target().try_id().is_none() {
+                return Ok(None);
+            }
             let name = reference.name().to_owned();
             let tip = reference
                 .peel_to_commit()
                 .map_err(|e| Failure::unreadable(format!("{}: {e}", name.as_bstr())))?
                 .id;
-            Ok((name, tip))
+            Ok(Some((name, tip)))
         })
+        .filter_map(Result::transpose)
         .collect()
 }
 

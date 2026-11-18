@@ -8,17 +8,20 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use git_worktree_manager::cli;
 use git_worktree_manager::commands::Status;
 use git_worktree_manager::environment::Environment;
 use git_worktree_manager::hook::{self, COMMITTED, HOOK, LINE_LIMIT};
-use git_worktree_manager::names::{PROGRAM, Variable};
-use git_worktree_manager::system::{Act, Completed, Failure, Fake, FakeFile, Metadata, System};
+use git_worktree_manager::names::{self, LAST_SWEEP_FILE, PROGRAM, Variable};
+use git_worktree_manager::system::{
+    Act, Completed, Failure, Fake, FakeFile, FileId, Metadata, System,
+};
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
-use sandbox::{BIN, Sandbox, join};
+use sandbox::{BIN, Sandbox, join, real};
 use serde_json::Value;
 
 const ZERO: &str = "0000000000000000000000000000000000000000";
@@ -290,6 +293,9 @@ impl System for Broken {
     fn metadata(&self, path: &Path) -> Result<Option<Metadata>, Failure> {
         self.fake.metadata(path)
     }
+    fn file_id(&self, path: &Path) -> Result<Option<FileId>, Failure> {
+        self.fake.file_id(path)
+    }
     fn read_link(&self, path: &Path) -> Result<Option<PathBuf>, Failure> {
         self.fake.read_link(path)
     }
@@ -345,6 +351,9 @@ impl System for Broken {
     }
     fn lock(&mut self, path: &Path) -> Result<Option<()>, Failure> {
         self.fake.lock(path)
+    }
+    fn wait_lock(&mut self, path: &Path) -> Result<(), Failure> {
+        self.fake.wait_lock(path)
     }
     fn print(&mut self, text: &str) -> Result<(), Failure> {
         self.fake.print(text)
@@ -667,6 +676,7 @@ fn test_update_ref_and_a_fetch_write_the_log() {
     );
     let theirs = s.commit(&other, "theirs.txt", "theirs\n");
     s.git(&other, &["push", "--quiet", "origin", "main"]);
+    let report = sweep_report(&s, &repo);
     s.git(&repo, &["fetch", "--quiet", "origin"]);
     let lines = logged(&log);
     let fetched = for_ref(&lines, DEFAULT);
@@ -674,6 +684,46 @@ fn test_update_ref_and_a_fetch_write_the_log() {
         fetched.last().map(|line| &line["new"]),
         Some(&Value::from(theirs))
     );
+    assert_swept(&report, &repo);
+}
+
+/// Makes `repo`'s last-sweep report a FIFO, read whole by a thread, so
+/// the sweep the hook starts blocks there until the test reads what it
+/// planned. Under `--unattended` with no setting it only plans, in the
+/// sandbox's state folder.
+fn sweep_report(s: &Sandbox, repo: &str) -> mpsc::Receiver<String> {
+    let common = s.git(
+        repo,
+        &["rev-parse", "--path-format=absolute", "--git-common-dir"],
+    );
+    let state = names::state_dir(&s.environment(), Path::new(&real(common.trim())))
+        .expect("a state folder");
+    assert!(state.starts_with(&s.tmp), "{}", state.display());
+    fs::create_dir_all(&state).expect("the state folder");
+    let fifo = state.join(LAST_SWEEP_FILE);
+    s.sh(&["mkfifo", &fifo.to_string_lossy()], None);
+    let (sender, receiver) = mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = sender.send(fs::read_to_string(&fifo).unwrap_or_default());
+    });
+    receiver
+}
+
+/// The detached sweep planned `repo`, and nothing else, without acting.
+fn assert_swept(report: &mpsc::Receiver<String>, repo: &str) {
+    let text = report
+        .recv_timeout(Duration::from_secs(60))
+        .expect("the detached sweep's report");
+    let report: Value = serde_json::from_str(&text).expect("a JSON report");
+    assert_eq!(report["command"], "sweep");
+    assert_eq!(report["dry_run"], true, "{report:#}");
+    let paths: Vec<&Value> = report["repositories"]
+        .as_array()
+        .expect("repositories")
+        .iter()
+        .map(|r| &r["path"])
+        .collect();
+    assert_eq!(paths, [&Value::from(real(repo))]);
 }
 
 // Timed as the built binary ---------------------------------------------------
@@ -899,19 +949,21 @@ fn test_a_1000_ref_fetch_logs_each_ref_once() {
         assert_eq!(lines.len(), BRANCHES, "round {round}");
         assert_eq!(moves(&lines), moves(&expected), "round {round}");
     }
-    // Only the default branch's line starts the sweep, as the fake
-    // system's tests check: the sweep isn't built to leave a trace here.
+    // Only the default branch's line starts the sweep, which plans the
+    // clone it ran in.
     let tip = bench.s.commit(&bench.seed, "moved.txt", "moved\n");
     bench
         .s
         .git(&bench.seed, &["push", "--quiet", "origin", "main"]);
     let before = line_count(&bench.log);
+    let report = sweep_report(&bench.s, &bench.clones[2]);
     fetch(&bench.s, &bench.clones[2]);
     let lines: Vec<Value> = logged(&bench.log).into_iter().skip(before).collect();
     assert_eq!(
         moves(&lines),
         moves(&[serde_json::json!({"ref": DEFAULT, "new": tip})])
     );
+    assert_swept(&report, &bench.clones[2]);
 }
 
 /// The shim's cost on a fetch. A timing budget, run by name in a release

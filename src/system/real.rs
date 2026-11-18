@@ -11,7 +11,7 @@ use std::process::{Command, Stdio};
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
 
-use super::{Completed, Failure, FileKind, Metadata, System, is_inside, real_path};
+use super::{Completed, Failure, FileId, FileKind, Metadata, System, is_inside, real_path};
 use crate::environment::Environment;
 use crate::names::PROGRAM;
 use crate::time::parse_lstart;
@@ -54,9 +54,9 @@ fn exit_code(status: std::process::ExitStatus) -> i32 {
 
 /// The variables that point git at a repository, as `git rev-parse
 /// --local-env-vars` lists them. A hook inherits some of them, and they
-/// would win over the folder a `git` child runs in: an inherited
-/// `GIT_OBJECT_DIRECTORY` would let the compare pass find in the clone the
-/// objects the backup lacks.
+/// would win over the repository a `git` child, or the program started
+/// detached, is given: an inherited `GIT_OBJECT_DIRECTORY` would let the
+/// compare pass find in the clone the objects the backup lacks.
 const GIT_LOCAL_VARIABLES: [&str; 15] = [
     "GIT_ALTERNATE_OBJECT_DIRECTORIES",
     "GIT_CONFIG",
@@ -110,6 +110,18 @@ fn make_parent(path: &Path) -> Result<(), Failure> {
     path.parent().map_or(Ok(()), |parent| {
         fs::create_dir_all(parent).map_err(|e| step_failed(&e, parent))
     })
+}
+
+/// The lock file at `path`, opened to take `flock` on, and made with its
+/// folder when missing.
+fn lock_file(path: &Path) -> Result<fs::File, Failure> {
+    make_parent(path)?;
+    fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(path)
+        .map_err(|error| step_failed(&error, path))
 }
 
 /// Writes each chunk in one `write`, stopping at the first that fails. A
@@ -231,6 +243,17 @@ impl System for Real {
         }
     }
 
+    fn file_id(&self, path: &Path) -> Result<Option<FileId>, Failure> {
+        match fs::metadata(path) {
+            Ok(meta) => Ok(Some(FileId {
+                device: meta.dev(),
+                inode: meta.ino(),
+            })),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(unreadable(&error, path)),
+        }
+    }
+
     fn read_link(&self, path: &Path) -> Result<Option<PathBuf>, Failure> {
         match fs::read_link(path) {
             Ok(target) => Ok(Some(target)),
@@ -294,7 +317,12 @@ impl System for Real {
         args: &[OsString],
         env: &[(String, String)],
     ) -> Result<(), Failure> {
-        Command::new(program)
+        GIT_LOCAL_VARIABLES
+            .iter()
+            .fold(Command::new(program), |mut command, name| {
+                command.env_remove(name);
+                command
+            })
             .args(args)
             .current_dir(dir)
             .envs(env.iter().map(|(name, value)| (name, value)))
@@ -386,18 +414,19 @@ impl System for Real {
     }
 
     fn lock(&mut self, path: &Path) -> Result<Option<Self::Held>, Failure> {
-        make_parent(path)?;
-        let file = fs::OpenOptions::new()
-            .create(true)
-            .truncate(false)
-            .write(true)
-            .open(path)
-            .map_err(|error| step_failed(&error, path))?;
+        let file = lock_file(path)?;
         match file.try_lock() {
             Ok(()) => Ok(Some(Held(file))),
             Err(fs::TryLockError::WouldBlock) => Ok(None),
             Err(fs::TryLockError::Error(error)) => Err(step_failed(&error, path)),
         }
+    }
+
+    fn wait_lock(&mut self, path: &Path) -> Result<Self::Held, Failure> {
+        let file = lock_file(path)?;
+        file.lock()
+            .map(|()| Held(file))
+            .map_err(|error| step_failed(&error, path))
     }
 
     fn print(&mut self, text: &str) -> Result<(), Failure> {

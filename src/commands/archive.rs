@@ -263,6 +263,7 @@ fn repository_report(
         branches: Vec::new(),
         backup,
         rescues: Vec::new(),
+        build_output: Vec::new(),
         totals: Totals::new(),
     }
 }

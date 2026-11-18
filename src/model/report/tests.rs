@@ -86,6 +86,7 @@ fn example() -> Report {
                 compares: vec![],
             }),
             rescues: vec![],
+            build_output: vec![],
             totals: Totals::new(),
         }],
         totals: Totals::new(),

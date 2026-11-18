@@ -14,8 +14,8 @@ use crate::model::ids::{
 use crate::model::outcomes::{Outcome, Outcomes};
 use crate::model::plan::{BranchPlan, Plan, WorktreePlan};
 use crate::model::report::{
-    ArchiveReport, BackupReport, BranchReport, Compare, Report, RepositoryReport, RescueReport,
-    SCHEMA, Totals, WorktreeReport,
+    ArchiveReport, BackupReport, BranchReport, BuildOutputAction, BuildOutputReport, Compare,
+    Report, RepositoryReport, RescueReport, SCHEMA, Totals, WorktreeReport,
 };
 use crate::names::BACKUP_DIR;
 use crate::rules::survival;
@@ -46,7 +46,8 @@ string_enum! {
         ArchivesFailed => "archives.failed",
         /// Branches deleted by hand and archived from the log, or to be.
         Rescues => "rescues",
-        /// Removals, prunes, deletions and rescues that failed.
+        /// Removals, prunes, deletions, rescues and deletions of build
+        /// output that failed.
         Failed => "failed",
         /// Worktrees and branches with an attention code.
         Attention => "attention",
@@ -129,6 +130,7 @@ pub fn of(plan: &Plan, outcomes: &Outcomes) -> RepositoryReport {
         branches,
         backup: Some(backup),
         rescues: outcomes.rescues.clone(),
+        build_output: outcomes.build_output.clone(),
         totals: Totals::new(),
     };
     RepositoryReport {
@@ -149,7 +151,76 @@ pub fn problem(path: &Path, problem: Note<ProblemCode>) -> RepositoryReport {
         branches: vec![],
         backup: None,
         rescues: vec![],
+        build_output: vec![],
         totals: Totals::new(),
+    };
+    RepositoryReport {
+        totals: totals(&report),
+        ..report
+    }
+}
+
+/// Two rounds of one sweep over one repository as one part: each item
+/// both list as the later round left it, unless the earlier failed on it
+/// and the later didn't do it; each only the earlier lists as that round
+/// left it; the backup's counts and compares added up; and the totals
+/// counted again, so nothing a round did, or failed to do, is missing.
+pub fn merged(earlier: &RepositoryReport, later: &RepositoryReport) -> RepositoryReport {
+    fn union<T: Clone, K: PartialEq>(
+        earlier: &[T],
+        later: &[T],
+        key: impl Fn(&T) -> K,
+        outcome: impl Fn(&T) -> OutcomeKind,
+    ) -> Vec<T> {
+        let stays =
+            |e: &T, l: &T| outcome(e) == OutcomeKind::Failed && outcome(l) != OutcomeKind::Done;
+        let earlier_wins = |e: &T| later.iter().all(|l| key(l) != key(e) || stays(e, l));
+        let later_wins = |l: &T| earlier.iter().all(|e| key(l) != key(e) || !stays(e, l));
+        earlier
+            .iter()
+            .filter(|e| earlier_wins(e))
+            .chain(later.iter().filter(|l| later_wins(l)))
+            .cloned()
+            .collect()
+    }
+    let backup = match (&earlier.backup, &later.backup) {
+        (Some(e), Some(l)) => Some(BackupReport {
+            path: l.path.clone(),
+            archived: e.archived + l.archived,
+            verified: e.verified + l.verified,
+            failed: e.failed + l.failed,
+            compares: e.compares.iter().chain(&l.compares).cloned().collect(),
+        }),
+        (e, l) => l.clone().or_else(|| e.clone()),
+    };
+    let report = RepositoryReport {
+        worktrees: union(
+            &earlier.worktrees,
+            &later.worktrees,
+            |w| w.path.clone(),
+            |w| w.outcome,
+        ),
+        branches: union(
+            &earlier.branches,
+            &later.branches,
+            |b| b.name.clone(),
+            |b| b.outcome,
+        ),
+        rescues: union(
+            &earlier.rescues,
+            &later.rescues,
+            |r| (r.branch.clone(), r.tip),
+            |r| r.outcome,
+        ),
+        build_output: union(
+            &earlier.build_output,
+            &later.build_output,
+            |b| b.path.clone(),
+            |b| b.outcome,
+        ),
+        backup,
+        totals: Totals::new(),
+        ..later.clone()
     };
     RepositoryReport {
         totals: totals(&report),
@@ -199,7 +270,8 @@ fn backup_note(written: u64) -> String {
 }
 
 /// The outcomes of a dry run, which did nothing: no outcome, branch
-/// archive or compare, and each `HEAD` archive and rescue `planned`.
+/// archive or compare, and each `HEAD` archive, rescue and deletion of
+/// build output `planned`.
 fn planned(outcomes: &Outcomes) -> Outcomes {
     Outcomes {
         dry_run: true,
@@ -225,6 +297,23 @@ fn planned(outcomes: &Outcomes) -> Outcomes {
                 outcome: OutcomeKind::Planned,
                 error: None,
                 ..r.clone()
+            })
+            .collect(),
+        build_output: outcomes
+            .build_output
+            .iter()
+            .map(|b| {
+                // One kept because it couldn't be read keeps why, though
+                // nothing was tried, so nothing failed.
+                let kept = b.action == BuildOutputAction::Keep;
+                BuildOutputReport {
+                    outcome: match b.action {
+                        BuildOutputAction::Delete => OutcomeKind::Planned,
+                        BuildOutputAction::Keep => OutcomeKind::None,
+                    },
+                    error: b.error.clone().filter(|_| kept),
+                    ..b.clone()
+                }
             })
             .collect(),
         ..Outcomes::default()
@@ -483,6 +572,7 @@ fn count(report: &RepositoryReport, total: Total) -> u64 {
             .map(|w| w.outcome)
             .chain(report.branches.iter().map(|b| b.outcome))
             .chain(report.rescues.iter().map(|r| r.outcome))
+            .chain(report.build_output.iter().map(|b| b.outcome))
             .filter(|&o| o == OutcomeKind::Failed)
             .count(),
         Total::Attention => {

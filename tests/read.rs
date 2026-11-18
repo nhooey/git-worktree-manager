@@ -757,6 +757,49 @@ fn test_a_bare_repository_has_no_main_worktree() {
     }
 }
 
+/// A symbolic ref under `refs/heads/` is no branch of its own: deleting
+/// it as one would delete the branch it names.
+#[test]
+fn test_a_symbolic_branch_is_left_out() {
+    let s = Sandbox::new();
+    let repo = s.cloned();
+    s.git(
+        &repo,
+        &["symbolic-ref", "refs/heads/master", "refs/heads/main"],
+    );
+    s.git(
+        &repo,
+        &[
+            "symbolic-ref",
+            "refs/heads/dangling",
+            "refs/heads/never-made",
+        ],
+    );
+    let read = facts(&s, &repo, &[]).facts;
+    let names: Vec<&str> = read.branches.iter().map(|b| b.name.as_str()).collect();
+    assert_eq!(names, ["main"]);
+}
+
+/// A worktree whose `HEAD` names an alias is on the branch the alias
+/// names, at the end of the chain.
+#[test]
+fn test_a_worktree_on_an_alias_is_on_the_branch_it_names() {
+    let s = Sandbox::new();
+    let repo = s.cloned();
+    let path = s.add_worktree(&repo, "feature");
+    s.git(
+        &repo,
+        &["symbolic-ref", "refs/heads/middle", "refs/heads/feature"],
+    );
+    s.git(
+        &repo,
+        &["symbolic-ref", "refs/heads/alias", "refs/heads/middle"],
+    );
+    s.git(&path, &["symbolic-ref", "HEAD", "refs/heads/alias"]);
+    let read = facts(&s, &repo, &[]).facts;
+    assert_eq!(worktree(&read, &path).branch.as_deref(), Some("feature"));
+}
+
 #[test]
 fn test_no_origin_means_no_default_branch() {
     let s = Sandbox::new();

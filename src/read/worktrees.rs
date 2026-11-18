@@ -92,14 +92,51 @@ pub fn list(
     Ok(main.into_iter().chain(sorted.into_values()).collect())
 }
 
-/// The branch `HEAD` names in `view`, and its commit.
+/// How many refs git reads to resolve one name, `HEAD` and the branch at
+/// the end of its chain among them, before it gives up.
+const SYMBOLIC_DEPTH: usize = 5;
+
+/// How far a chain is followed to find the branch it ends at, past where
+/// git gives up.
+const CHAIN_LIMIT: usize = 64;
+
+/// The branch `HEAD` names in `view`, at the end of any chain of
+/// symbolic refs, and its commit when git resolves it. A chain longer
+/// than git follows still names the branch it ends at, which the
+/// worktree holds, with no commit; one that loops, or runs past
+/// [`CHAIN_LIMIT`], names neither.
 fn head(view: &gix::Repository) -> (Option<String>, Option<ObjectId>) {
-    view.head().map_or((None, None), |head| {
-        (
-            head.referent_name().map(|name| name.shorten().to_string()),
-            head.id().map(gix::Id::detach),
-        )
-    })
+    let Ok(head) = view.head() else {
+        return (None, None);
+    };
+    let Some(first) = head.referent_name().map(ToOwned::to_owned) else {
+        return (None, head.id().map(gix::Id::detach));
+    };
+    let target = |name: &gix::refs::FullName| {
+        view.try_find_reference(name.as_ref())
+            .ok()
+            .flatten()
+            .map(|found| found.target().into_owned())
+    };
+    let chain: Vec<gix::refs::FullName> =
+        std::iter::successors(Some(first), |name| match target(name) {
+            Some(gix::refs::Target::Symbolic(next)) => Some(next),
+            _ => None,
+        })
+        .take(CHAIN_LIMIT)
+        .collect();
+    // `HEAD` is one of the refs git reads.
+    let resolved = chain.len() < SYMBOLIC_DEPTH;
+    match chain.last().map(|last| (last, target(last))) {
+        Some((_, Some(gix::refs::Target::Symbolic(_)))) | None => (None, None),
+        Some((last, end)) => (
+            Some(last.as_ref().shorten().to_string()),
+            match end {
+                Some(gix::refs::Target::Object(id)) if resolved => Some(id),
+                _ => None,
+            },
+        ),
+    }
 }
 
 /// The facts of each worktree in `listed`, whose `HEAD`s `ancestry` has

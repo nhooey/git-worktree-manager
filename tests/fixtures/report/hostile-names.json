@@ -203,6 +203,7 @@
         "compares": []
       },
       "rescues": [],
+      "build_output": [],
       "totals": {
         "archives.failed": 0,
         "archives.planned": 1,

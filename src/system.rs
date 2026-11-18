@@ -102,6 +102,14 @@ pub struct Metadata {
     pub modified: Option<Timestamp>,
 }
 
+/// A file's identity: its volume and its inode there. Two paths with one
+/// identity name one file, whatever their case or links.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct FileId {
+    pub device: u64,
+    pub inode: u64,
+}
+
 /// A command's arguments.
 pub fn args<S: AsRef<OsStr>>(items: impl IntoIterator<Item = S>) -> Vec<OsString> {
     items
@@ -148,6 +156,10 @@ pub trait System {
 
     /// None when nothing is at `path`.
     fn metadata(&self, path: &Path) -> Result<Option<Metadata>, Failure>;
+
+    /// The identity of what `path` names, following links; None when
+    /// nothing is there.
+    fn file_id(&self, path: &Path) -> Result<Option<FileId>, Failure>;
 
     /// Where the symbolic link at `path` points, as written; None when
     /// `path` is no link.
@@ -206,6 +218,10 @@ pub trait System {
     /// Takes `flock` on `path`, creating it; None when another process
     /// holds it.
     fn lock(&mut self, path: &Path) -> Result<Option<Self::Held>, Failure>;
+
+    /// Takes `flock` on `path`, creating it, once whoever holds it lets it
+    /// go.
+    fn wait_lock(&mut self, path: &Path) -> Result<Self::Held, Failure>;
 
     /// Writes to standard output. A reader that has gone away is no
     /// failure.
