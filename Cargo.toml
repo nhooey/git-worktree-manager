@@ -1,0 +1,19 @@
+[package]
+name = "git-worktree-manager"
+version = "0.2.0"
+edition = "2024"
+description = "Remove git worktrees and branches once their work lands, and lose nothing"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+# Local time for `ps`'s start times, as Python's `time.mktime` reads it.
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+# The lock reasons' regular expressions, which the rules match as Python does.
+regex = "1"
+serde = { version = "1", features = ["derive"] }
+# `preserve_order` keeps a JSON object's keys in file order, as Python's dict
+# does: the events log and the user's config are read in that order.
+serde_json = { version = "1", features = ["preserve_order"] }
+# The `<repo>-<hash8>` folder names.
+sha2 = "0.11"

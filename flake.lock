@@ -24,6 +24,21 @@
         "type": "github"
       }
     },
+    "crane": {
+      "locked": {
+        "lastModified": 1794962885,
+        "narHash": "sha256-zrweT2tXbcWiJMACOhOr2eYFJKVa6g59ouRaZ3BS5Do=",
+        "owner": "ipetkov",
+        "repo": "crane",
+        "rev": "95e62def851e9d650f0eab63cb4f59a3306e20bd",
+        "type": "github"
+      },
+      "original": {
+        "owner": "ipetkov",
+        "repo": "crane",
+        "type": "github"
+      }
+    },
     "devshell": {
       "inputs": {
         "nixpkgs": [
@@ -105,6 +120,7 @@
     "root": {
       "inputs": {
         "agent-skill-flake": "agent-skill-flake",
+        "crane": "crane",
         "flake-parts": "flake-parts_2",
         "nixpkgs": "nixpkgs",
         "systems": "systems_2",
