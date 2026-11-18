@@ -1,8 +1,8 @@
 //! `rules`: every rule with its id, from the data the rules run on.
 
-use crate::cli::FormatArg;
-use crate::commands::{Status, not_built};
-use crate::model::ids::CommandName;
+use crate::cli::{Format, FormatArg};
+use crate::commands::{Status, print_json};
+use crate::rules::catalogue;
 use crate::system::{Failure, System};
 
 #[derive(clap::Args, Clone, Debug, PartialEq, Eq)]
@@ -12,9 +12,13 @@ pub struct Args {
 }
 
 /// Whether `run` does the command's work yet.
-pub const BUILT: bool = false;
+pub const BUILT: bool = true;
 
 pub fn run(args: &Args, system: &mut impl System) -> Result<Status, Failure> {
-    let _ = (args, system);
-    Err(not_built(CommandName::Rules))
+    let catalogue = catalogue::catalogue();
+    match args.format.format {
+        Format::Text => system.print(&catalogue::text(&catalogue)),
+        Format::Json => print_json(system, &catalogue),
+    }
+    .map(|()| Status::Done)
 }
