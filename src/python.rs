@@ -458,3 +458,139 @@ pub(crate) fn fromisoformat(text: &str) -> Option<IsoDateTime> {
         offset_micros,
     })
 }
+
+// json.dumps ------------------------------------------------------------------
+
+/// `repr(float)`: the shortest digits that read back as `x`, in positional
+/// notation from 1e-4 up to 1e16 and in exponent notation outside it.
+/// `json.dumps` writes the non-finite values as `NaN` and `Infinity`.
+pub(crate) fn float_repr(x: f64) -> String {
+    if x.is_nan() {
+        return "NaN".to_owned();
+    }
+    if x.is_infinite() {
+        return if x > 0.0 { "Infinity" } else { "-Infinity" }.to_owned();
+    }
+    // Rust's `{:e}` gives the same shortest digits as Python's repr.
+    let scientific = format!("{:e}", x.abs());
+    let (mantissa, exponent) = scientific.split_once('e').unwrap_or((&scientific, "0"));
+    let exponent: i32 = exponent.parse().unwrap_or(0);
+    let digits: String = mantissa.chars().filter(|c| *c != '.').collect();
+    let sign = if x.is_sign_negative() { "-" } else { "" };
+    // Where the decimal point falls after the first `point` digits.
+    let point = exponent + 1;
+    let body = if !(-3..=16).contains(&point) {
+        let (first, rest) = digits.split_at(1);
+        let dot = if rest.is_empty() { "" } else { "." };
+        let exponent_sign = if exponent < 0 { '-' } else { '+' };
+        format!("{first}{dot}{rest}e{exponent_sign}{:02}", exponent.abs())
+    } else if point <= 0 {
+        format!("0.{}{digits}", "0".repeat(point.unsigned_abs() as usize))
+    } else {
+        let point = point as usize;
+        if point >= digits.len() {
+            format!("{digits}{}.0", "0".repeat(point - digits.len()))
+        } else {
+            format!("{}.{}", &digits[..point], &digits[point..])
+        }
+    };
+    format!("{sign}{body}")
+}
+
+/// A JSON string as `json.dumps` writes it with `ensure_ascii`: every
+/// character outside printable ASCII as `\uXXXX`, in surrogate pairs above
+/// the Basic Multilingual Plane.
+fn json_string(text: &str) -> String {
+    let escaped: String = text
+        .chars()
+        .map(|c| match c {
+            '"' => "\\\"".to_owned(),
+            '\\' => "\\\\".to_owned(),
+            '\n' => "\\n".to_owned(),
+            '\r' => "\\r".to_owned(),
+            '\t' => "\\t".to_owned(),
+            '\u{08}' => "\\b".to_owned(),
+            '\u{0c}' => "\\f".to_owned(),
+            ' '..='~' => c.to_string(),
+            _ => c
+                .encode_utf16(&mut [0; 2])
+                .iter()
+                .map(|unit| format!("\\u{unit:04x}"))
+                .collect(),
+        })
+        .collect();
+    format!("\"{escaped}\"")
+}
+
+fn json_number(n: &serde_json::Number) -> String {
+    match n.as_f64() {
+        Some(x) if n.is_f64() => float_repr(x),
+        _ => n.to_string(),
+    }
+}
+
+/// A container's items, on one line, or one per line indented a level
+/// deeper than the container.
+fn json_container(
+    open: char,
+    close: char,
+    items: &[String],
+    indent: Option<usize>,
+    level: usize,
+) -> String {
+    if items.is_empty() {
+        return format!("{open}{close}");
+    }
+    match indent {
+        None => format!("{open}{}{close}", items.join(",")),
+        Some(width) => {
+            let inner = format!("\n{}", " ".repeat(width * (level + 1)));
+            let outer = format!("\n{}", " ".repeat(width * level));
+            format!(
+                "{open}{inner}{}{outer}{close}",
+                items.join(&format!(",{inner}"))
+            )
+        }
+    }
+}
+
+fn json_value(value: &serde_json::Value, indent: Option<usize>, level: usize) -> String {
+    use serde_json::Value;
+    match value {
+        Value::Null => "null".to_owned(),
+        Value::Bool(b) => b.to_string(),
+        Value::Number(n) => json_number(n),
+        Value::String(s) => json_string(s),
+        Value::Array(items) => {
+            let written: Vec<String> = items
+                .iter()
+                .map(|item| json_value(item, indent, level + 1))
+                .collect();
+            json_container('[', ']', &written, indent, level)
+        }
+        Value::Object(map) => {
+            let colon = if indent.is_some() { ": " } else { ":" };
+            let sorted: std::collections::BTreeMap<&String, &Value> = map.iter().collect();
+            let written: Vec<String> = sorted
+                .into_iter()
+                .map(|(key, item)| {
+                    format!(
+                        "{}{colon}{}",
+                        json_string(key),
+                        json_value(item, indent, level + 1)
+                    )
+                })
+                .collect();
+            json_container('{', '}', &written, indent, level)
+        }
+    }
+}
+
+/// `json.dumps(value, sort_keys=True, indent=indent)`, or with no indent,
+/// `json.dumps(value, sort_keys=True, separators=(",", ":"))`.
+pub(crate) fn json_dumps(value: &serde_json::Value, indent: Option<usize>) -> String {
+    json_value(value, indent, 0)
+}
+
+#[cfg(test)]
+mod tests;

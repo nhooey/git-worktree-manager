@@ -9,6 +9,10 @@ publish = false
 [dependencies]
 # Local time for `ps`'s start times, as Python's `time.mktime` reads it.
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+# The command line: help, usage and error messages, without colour.
+clap = { version = "4.6.8", default-features = false, features = ["std", "derive", "help", "usage", "error-context"] }
+# Locating a repository and listing its worktrees, read-only and offline.
+gix = { version = "0.90.0", default-features = false, features = ["sha1"] }
 # The lock reasons' regular expressions, which the rules match as Python does.
 regex = "1"
 serde = { version = "1", features = ["derive"] }
@@ -17,3 +21,6 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 # The `<repo>-<hash8>` folder names.
 sha2 = "0.11"
+
+[dev-dependencies]
+tempfile = "3"

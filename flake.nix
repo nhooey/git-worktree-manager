@@ -88,10 +88,20 @@
           };
 
           # The Rust crate. crane reads its name and version from Cargo.toml,
-          # and builds its dependencies once for every check below.
+          # and builds its dependencies once for every check below. The
+          # source is the cargo files and the shipped settings, which the
+          # binary embeds.
           craneLib = inputs.crane.mkLib pkgs;
+          crate = craneLib.crateNameFromCargoToml { cargoToml = ./Cargo.toml; };
           crateArgs = {
-            src = craneLib.cleanCargoSource ./.;
+            src = lib.cleanSourceWith {
+              src = ./.;
+              filter =
+                path: type:
+                craneLib.filterCargoSources path type
+                || lib.hasSuffix "/worktrees/defaults.json" path
+                || (type == "directory" && lib.hasSuffix "/worktrees" path);
+            };
             strictDeps = true;
           };
           cargoArtifacts = craneLib.buildDepsOnly crateArgs;
@@ -127,6 +137,21 @@
               };
             };
             default = config.packages.worktrees;
+
+            # The Rust port, under the name in Cargo.toml. Its tests run in
+            # the `crate-tests` check.
+            ${crate.pname} = craneLib.buildPackage (
+              crateArgs
+              // {
+                inherit cargoArtifacts;
+                doCheck = false;
+                meta = {
+                  description = "Remove git worktrees and branches once their work lands, and lose nothing";
+                  license = lib.licenses.asl20;
+                  mainProgram = crate.pname;
+                };
+              }
+            );
           };
 
           checks = {
@@ -146,7 +171,21 @@
               sourceTree = ./.;
             } (builtins.readFile ./checks/tests.sh);
 
-            crate-tests = craneLib.cargoTest (crateArgs // { inherit cargoArtifacts; });
+            # The Rust package runs: `--version`, `--help`, and `env` and a
+            # dry-run `clean` in a fresh repository.
+            crate-runs = pkgs.runCommand "${crate.pname}-runs" {
+              nativeBuildInputs = [ pkgs.git ];
+              program = lib.getExe config.packages.${crate.pname};
+            } (builtins.readFile ./checks/crate-runs.sh);
+
+            # The command tests run the binary over temporary git repositories.
+            crate-tests = craneLib.cargoTest (
+              crateArgs
+              // {
+                inherit cargoArtifacts;
+                nativeCheckInputs = [ pkgs.git ];
+              }
+            );
 
             crate-clippy = craneLib.cargoClippy (
               crateArgs
