@@ -252,6 +252,31 @@ class Sandbox(unittest.TestCase):
             if line.startswith("worktree ")
         )
 
+    def install_shim(self, repo: str, default_ref: str = "") -> str:
+        """The `reference-transaction` hook, installed by hand as `worktrees hooks install` will."""
+        hooks = os.path.join(
+            self.git(repo, "rev-parse", "--path-format=absolute", "--git-common-dir").strip(),
+            "hooks",
+        )
+        os.makedirs(hooks, exist_ok=True)
+        path = os.path.join(hooks, "reference-transaction")
+        log = os.path.join(self.state_dir(repo), "events.jsonl")
+        os.makedirs(os.path.dirname(log), exist_ok=True)
+        self.write(
+            path,
+            "#!/bin/sh\n"
+            '[ "$1" = committed ] || exit 0\n'
+            "w={}\n"
+            '[ -x "$w" ] || exit 0\n'
+            "WORKTREES_LOG={} \\\n"
+            "WORKTREES_DEFAULT_REF={} \\\n"
+            'exec "$w" hook-ref-update "$@"\n'.format(
+                core.sh_quote(BIN), core.sh_quote(log), core.sh_quote(default_ref)
+            ),
+        )
+        os.chmod(path, 0o755)
+        return log
+
     def lstart(self, pid: int) -> str:
         """The process's start, in UTC, as `ps -o lstart=` gives it."""
         return " ".join(

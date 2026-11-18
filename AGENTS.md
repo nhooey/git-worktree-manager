@@ -7,8 +7,9 @@ and the Claude Code plugin whose hooks start and report its sweep.
 
 ## The program
 
-- `bin/worktrees`: the one entry point, POSIX `sh`. It runs
-  `python3 -m worktrees`.
+- `bin/worktrees`: the one entry point, POSIX `sh`. The subcommands a git
+  hook calls (`hook-ref-update`) are `sh` functions in it, with no git or
+  Python call; every other subcommand runs `python3 -m worktrees`.
 - `worktrees/rules.py`: every decision of the sweep, as pure functions over
   immutable values (NamedTuples, tuples, frozensets), as
   `python-hygiene-functional-style` asks at its standard-library tier.
@@ -24,6 +25,7 @@ and the Claude Code plugin whose hooks start and report its sweep.
 - `worktrees/tests/`: `test_core.py` and `test_rules.py` test the pure
   code directly; the others run the commands over temporary repositories
   with a bare remote, with `HOME` and the XDG folders inside them.
+  `test_hooks.py` holds the 1,000-ref fetch timing test.
 
 It must run on Python 3.9, macOS's `/usr/bin/python3`: no `match`, no
 `tomllib`, no `X | Y` outside annotations, no `dataclass(slots=True)`.

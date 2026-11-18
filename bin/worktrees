@@ -1,12 +1,91 @@
 #!/bin/sh
 # worktrees: the program's one entry point.
 #
-# It runs the Python package beside this file: `python3 -m worktrees`.
+# The subcommands git hooks call are sh functions here, because Python takes
+# 20 to 40 ms to start and a hook runs on every ref change. Every other
+# subcommand runs the Python package beside this file: `python3 -m worktrees`.
 
 # The Nix package writes its store paths here; in a clone they stay empty.
 packaged_root=
 packaged_python=
 packaged_path=
+
+# hook-ref-update <state>: git's reference-transaction hook.
+#
+# In state `committed`, appends one `ref-update` JSON line per
+# "<old> <new> <ref>" line of standard input to $WORKTREES_LOG, then starts
+# a detached sweep when one of the refs is $WORKTREES_DEFAULT_REF. Any other
+# state returns at once. No git, no Python, one `date` per run and one `awk`
+# for every line, so a 1,000-ref fetch costs one process, not 1,000. Each
+# line is flushed on its own, one `write` to a file opened for appending.
+# $WORKTREES_REPO, when set, names the common git directory.
+hook_ref_update() {
+	[ "${1-}" = committed ] || return 0
+	[ -n "${WORKTREES_LOG-}" ] || return 0
+	# One process: awk reads the clock through srand(), POSIX's only clock,
+	# and its exit status says whether the default branch's ref moved.
+	WT_PID=$$ WT_WORKTREE=$PWD WT_REPO=${WORKTREES_REPO-} \
+		WT_ACTION=${GIT_REFLOG_ACTION-} WT_DEFAULT=${WORKTREES_DEFAULT_REF-} \
+		awk '
+		function esc(s, sep, rep, n, parts, i, out) {
+			n = split(s, parts, sep)
+			out = parts[1]
+			for (i = 2; i <= n; i++) out = out rep parts[i]
+			return out
+		}
+		function q(s) {
+			if (s !~ /["\\]/) return "\"" s "\""
+			return "\"" esc(esc(s, "\\", "\\\\"), "\"", "\\\"") "\""
+		}
+		function iso(t, d, s, z, era, doe, yoe, y, doy, mp, m) {
+			d = int(t / 86400)
+			s = t - d * 86400
+			z = d + 719468
+			era = int(z / 146097)
+			doe = z - era * 146097
+			yoe = int((doe - int(doe / 1460) + int(doe / 36524) - int(doe / 146096)) / 365)
+			y = yoe + era * 400
+			doy = doe - (365 * yoe + int(yoe / 4) - int(yoe / 100))
+			mp = int((5 * doy + 2) / 153)
+			m = mp < 10 ? mp + 3 : mp - 9
+			if (m <= 2) y++
+			return sprintf("%04d-%02d-%02dT%02d:%02d:%02dZ", y, m, doy - int((153 * mp + 2) / 5) + 1, \
+				int(s / 3600), int((s % 3600) / 60), s % 60)
+		}
+		BEGIN {
+			srand()
+			out = ENVIRON["WORKTREES_LOG"]
+			head = "{\"time\":" q(iso(srand()))
+			if (ENVIRON["WT_REPO"] != "") head = head ",\"repo\":" q(ENVIRON["WT_REPO"])
+			head = head ",\"worktree\":" q(ENVIRON["WT_WORKTREE"]) ",\"event\":\"ref-update\""
+			tail = ",\"source\":\"hook\""
+			if (ENVIRON["WT_ACTION"] != "") tail = tail ",\"action\":" q(ENVIRON["WT_ACTION"])
+			tail = tail ",\"pid\":" (ENVIRON["WT_PID"] + 0) "}"
+			target = ENVIRON["WT_DEFAULT"]
+			moved = 0
+		}
+		NF >= 3 {
+			old = ($1 ~ /^0+$/) ? "" : ",\"old\":\"" $1 "\""
+			print head ",\"ref\":" q($3) old ",\"new\":\"" $2 "\"" tail >>out
+			fflush(out)
+			if (target != "" && $3 == target) moved = 1
+		}
+		END { exit moved ? 0 : 1 }
+	' >/dev/null || return 0
+	nohup "$0" sweep --from-hook </dev/null >/dev/null 2>&1 &
+}
+
+case ${1-} in
+hook-ref-update)
+	shift
+	if [ -n "${WORKTREES_DEBUG-}" ]; then
+		hook_ref_update "$@"
+	else
+		hook_ref_update "$@" 2>/dev/null
+	fi
+	exit 0
+	;;
+esac
 
 if [ -n "$packaged_root" ]; then
 	root=$packaged_root

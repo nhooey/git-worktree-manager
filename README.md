@@ -7,8 +7,8 @@ It holds one program, `worktrees`. Git hooks, dev shells, agent sessions and peo
 ## Install and run
 
 - **With Nix:** `nix run github:nhooey/nix-worktrees -- status`, or the `worktrees` package (`packages.<system>.default`, also `.worktrees`).
-- **Without Nix:** `bin/worktrees` from a clone, or `python3 -m worktrees` with the clone on `PYTHONPATH`. It needs Python 3.9 or later and nothing outside the standard library. `pip install .` gives the Python commands, without `bin/worktrees`.
-- **It runs** `git` 2.31 or later and `ps`.
+- **Without Nix:** `bin/worktrees` from a clone, or `python3 -m worktrees` with the clone on `PYTHONPATH`. It needs Python 3.9 or later and nothing outside the standard library. `pip install .` gives the Python commands only, without the hook entry point.
+- **It runs** `git` 2.31 or later (2.36 for the hook), `ps` and `awk`.
 
 ## The commands
 
@@ -46,7 +46,7 @@ Every command takes `--help` and long options only. `sweep`, `status`, `verdict`
 
 ## The sweep
 
-A sweep runs when `worktrees sweep` starts it. It takes `flock` on `<state>/sweep.lock`; a second sweep that finds it held leaves `sweep.pending`, and the first runs again. Its report goes to `<state>/last-sweep.json`.
+A sweep runs after the default branch moves, started detached by the hook, or by hand. It takes `flock` on `<state>/sweep.lock`; a second sweep that finds it held leaves `sweep.pending`, and the first runs again. Its report goes to `<state>/last-sweep.json`.
 
 In order, in each repository:
 
@@ -136,9 +136,36 @@ Settings come from git config, so each repository can set its own. Defaults are 
 
 Each repository has `${XDG_STATE_HOME:-~/.local/state}/worktrees/<repo>-<hash8>/`, holding:
 
-- **`events.jsonl`:** every snapshot, archive, removal and deletion the sweep made. It is append-only, and each line is a single `write` under 4 KB.
+- **`events.jsonl`:** every ref update the hook saw, and every snapshot, archive, removal and deletion the sweep made. It is append-only, and each line is a single `write` under 4 KB.
 - **`sweep.lock` and `sweep.pending`:** the sweep's lock, and the note that another sweep is due.
 - **`last-sweep.json`:** the last sweep's report.
+
+## The hook
+
+`worktrees hook-ref-update` is a `sh` function in `bin/worktrees`, for git's `reference-transaction` hook. It makes no git call and starts no Python. On `committed` it does three things:
+- one awk process appends a line per ref to the log;
+- awk reads the clock through `srand()`;
+- when `$WORKTREES_DEFAULT_REF` is among the refs, it starts `worktrees sweep --from-hook`, detached.
+
+The shim installed in `.git/hooks/reference-transaction` is:
+
+```sh
+#!/bin/sh
+[ "$1" = committed ] || exit 0
+w=/nix/store/…-worktrees/bin/worktrees
+[ -x "$w" ] || exit 0
+WORKTREES_LOG=…/events.jsonl \
+WORKTREES_DEFAULT_REF=refs/remotes/origin/main \
+exec "$w" hook-ref-update "$@"
+```
+
+What the hook costs:
+
+- **Three starts per transaction:** git starts the hook for `preparing`, `prepared` and `committed`. On a Mac where a process start takes about 5.5 ms, that alone costs about 15 ms, so the shim leaves at once for any state but `committed`.
+- **A fetch is one transaction,** fast-forwards and forced updates alike. This holds for git 2.56 and for Apple's git 2.54. On a 1,000-ref fetch the hook adds about 4 ms over an empty hook. The test is `worktrees/tests/test_hooks.py`.
+- **Ref packing is one transaction per ref:** git's auto maintenance packs refs after a large fetch, and deletes each loose ref in a transaction of its own. With 1,000 loose refs that is 1,000 hook runs, about 28 s against 0.9 s. `maintenance.auto=false` avoids it.
+- **Deletions have no old value:** git 2.56 passes an all-zero old value for every branch deletion, `git branch -d` included. So a rescue takes the deleted tip from the last value the log holds for that ref.
+- **No reflog action:** git sets no `GIT_REFLOG_ACTION` for `git commit`, nor for a fetch's ref updates. A line has `action` only when git sets it.
 
 ## The build root
 
