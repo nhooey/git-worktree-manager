@@ -108,15 +108,15 @@ fn test_an_unbuilt_command_exits_1_and_prints_nothing() {
 
 #[test]
 fn test_a_failure_under_json_prints_the_error_shape() {
-    let ran = Sandbox::new().run(&["status", "--format", "json"], None, &[]);
+    let ran = Sandbox::new().run(&["sweep", "--dry-run", "--format", "json"], None, &[]);
     assert_eq!(ran.code, 1, "{}", ran.stderr);
     let printed: serde_json::Value = serde_json::from_str(&ran.stdout).expect("JSON");
     assert_eq!(
         printed,
         serde_json::json!({
             "schema": 1,
-            "command": "status",
-            "error": {"code": "not-built", "detail": "status is not built yet"},
+            "command": "sweep",
+            "error": {"code": "not-built", "detail": "sweep is not built yet"},
         })
     );
 }

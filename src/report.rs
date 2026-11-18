@@ -116,6 +116,7 @@ pub fn of(plan: &Plan, outcomes: &Outcomes) -> RepositoryReport {
         &plan.backup,
         archives
             .values()
+            .chain(outcomes.head_archives.values())
             .chain(outcomes.rescues.iter().filter_map(|r| r.archive.as_ref())),
         &outcomes.compares,
     );
@@ -197,11 +198,22 @@ fn backup_note(written: u64) -> String {
     )
 }
 
-/// The outcomes of a dry run, which did nothing: no outcome, archive or
-/// compare, and each rescue `planned`.
+/// The outcomes of a dry run, which did nothing: no outcome, branch
+/// archive or compare, and each `HEAD` archive and rescue `planned`.
 fn planned(outcomes: &Outcomes) -> Outcomes {
     Outcomes {
         dry_run: true,
+        head_archives: outcomes
+            .head_archives
+            .iter()
+            .map(|(path, a)| {
+                let planned = ArchiveReport {
+                    reference: a.reference.clone(),
+                    state: ArchiveState::Planned,
+                };
+                (path.clone(), planned)
+            })
+            .collect(),
         rescues: outcomes
             .rescues
             .iter()
@@ -320,6 +332,7 @@ fn worktree(
         tests: plan.tests.clone(),
         reasons: adding(&plan.reasons, stay),
         survives: plan.survives.clone(),
+        archive: outcomes.head_archives.get(&plan.path).cloned(),
         lock: plan.lock.clone(),
         attention: adding(
             &plan.attention,
@@ -391,8 +404,9 @@ fn branch(
     }
 }
 
-/// The backup's counts. An archive was written when its state says so or
-/// the compare pass ran over it.
+/// The backup's counts, each archive ref once, though a branch and the
+/// worktree whose `HEAD` it holds may share it. An archive was written
+/// when its state says so or the compare pass ran over it.
 fn backup<'a>(
     path: &Path,
     archives: impl Iterator<Item = &'a ArchiveReport>,
@@ -404,7 +418,9 @@ fn backup<'a>(
             matches!(a.state, ArchiveState::Written | ArchiveState::Verified)
                 || compared.contains(a.reference.as_str())
         })
-        .count();
+        .map(|a| a.reference.as_str())
+        .collect::<BTreeSet<_>>()
+        .len();
     let verified = compares.iter().filter(|c| c.ok).count();
     BackupReport {
         path: path.to_path_buf(),
@@ -451,9 +467,12 @@ fn count(report: &RepositoryReport, total: Total) -> u64 {
             .branches
             .iter()
             .filter_map(|b| b.archive.as_ref())
+            .chain(report.worktrees.iter().filter_map(|w| w.archive.as_ref()))
             .chain(report.rescues.iter().filter_map(|r| r.archive.as_ref()))
             .filter(|a| a.state == ArchiveState::Planned)
-            .count(),
+            .map(|a| a.reference.as_str())
+            .collect::<BTreeSet<_>>()
+            .len(),
         Total::ArchivesWritten => return backup(|b| b.archived),
         Total::ArchivesVerified => return backup(|b| b.verified),
         Total::ArchivesFailed => return backup(|b| b.failed),

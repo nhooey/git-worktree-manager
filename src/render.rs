@@ -124,7 +124,7 @@ fn worktree(w: &WorktreeReport) -> Item<'_> {
         rule: w.rule,
         reasons: &w.reasons,
         attention: &w.attention,
-        archive: None,
+        archive: w.archive.as_ref(),
         survives: &w.survives,
         bytes: w.bytes,
     }

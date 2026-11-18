@@ -22,6 +22,7 @@
           "action": "keep",
           "rule": "worktree.keep",
           "outcome": "none",
+          "archive": null,
           "tests": [],
           "reasons": [{ "code": "main-worktree", "detail": "the main worktree" }],
           "survives": [],
@@ -37,6 +38,7 @@
           "action": "remove",
           "rule": "worktree.remove",
           "outcome": "planned",
+          "archive": null,
           "tests": [],
           "reasons": [],
           "survives": [
@@ -58,6 +60,7 @@
           "action": "keep",
           "rule": "worktree.keep",
           "outcome": "none",
+          "archive": null,
           "tests": [],
           "reasons": [{ "code": "not-landed", "detail": "HEAD is not merged into refs/remotes/origin/main" }],
           "survives": [],

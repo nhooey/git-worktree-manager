@@ -53,6 +53,7 @@ fn example() -> Report {
                 }],
                 reasons: vec![],
                 survives: vec![merged(main)],
+                archive: None,
                 lock: None,
                 attention: vec![],
                 bytes: None,

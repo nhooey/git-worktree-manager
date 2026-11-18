@@ -174,6 +174,7 @@ fn done() -> Outcomes {
             .map(|b| (b.to_owned(), Outcome::done()))
             .collect(),
         archives: BTreeMap::from([("spike".to_owned(), archive(ArchiveState::Verified))]),
+        head_archives: BTreeMap::new(),
         compares: vec![compare(true)],
         rescues: vec![],
     }
@@ -723,6 +724,63 @@ fn test_a_repository_with_no_default_branch_keeps_everything() {
             (Total::BranchesKeep, 3),
         ])
     );
+}
+
+/// `spike`'s folder gone and its worktree pruned: `rules::prune` gives
+/// its `HEAD` the archive its deleted branch's plan names.
+fn spike_pruned() -> Plan {
+    let p = plan();
+    Plan {
+        worktrees: p
+            .worktrees
+            .iter()
+            .map(|w| {
+                if w.path == std::path::Path::new(SPIKE) {
+                    WorktreePlan {
+                        head: Some(oid('c')),
+                        survives: vec![],
+                        ..worktree(SPIKE, "spike", WorktreeAction::Prune)
+                    }
+                } else {
+                    w.clone()
+                }
+            })
+            .collect(),
+        ..p
+    }
+}
+
+#[test]
+fn test_an_archive_a_branch_and_a_pruned_head_share_counts_once() {
+    let head = |state| BTreeMap::from([(PathBuf::from(SPIKE), archive(state))]);
+    let written = report::of(
+        &spike_pruned(),
+        &Outcomes {
+            head_archives: head(ArchiveState::Verified),
+            ..done()
+        },
+    );
+    assert_eq!(
+        written.worktrees[2].archive,
+        Some(archive(ArchiveState::Verified))
+    );
+    assert_eq!(
+        written.backup.as_ref().map(|b| (b.archived, b.verified)),
+        Some((1, 1))
+    );
+    assert_eq!(written.totals[Total::ArchivesWritten.as_str()], 1);
+    let planned = report::of(
+        &spike_pruned(),
+        &Outcomes {
+            head_archives: head(ArchiveState::Verified),
+            ..dry()
+        },
+    );
+    assert_eq!(
+        planned.worktrees[2].archive,
+        Some(archive(ArchiveState::Planned))
+    );
+    assert_eq!(planned.totals[Total::ArchivesPlanned.as_str()], 1);
 }
 
 #[test]

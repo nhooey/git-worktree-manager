@@ -22,6 +22,7 @@
           "action": "remove",
           "rule": "worktree.remove",
           "outcome": "planned",
+          "archive": null,
           "tests": [
             { "name": "idle", "ok": true, "detail": "idle 3h of the 1h needed" }
           ],

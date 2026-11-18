@@ -76,6 +76,9 @@ pub struct WorktreeReport {
     /// Present only when `outcome` is `failed`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// The archive a prune needs of its `HEAD` first; None when it needs
+    /// none.
+    pub archive: Option<ArchiveReport>,
     pub tests: Vec<TestResult>,
     pub reasons: Vec<Note<ReasonCode>>,
     pub survives: Vec<Survival>,

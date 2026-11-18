@@ -135,8 +135,21 @@ pub(super) fn write_chunks(
     })
 }
 
+/// A held `flock`, released when dropped. The file is opened close-on-exec,
+/// but a child forked at that moment holds a copy of its descriptor until
+/// it execs, and closing ours alone would leave the lock with that copy;
+/// unlocking releases it whatever copies remain.
+pub struct Held(fs::File);
+
+impl Drop for Held {
+    fn drop(&mut self) {
+        // Closing the file releases the lock as well once every copy closes.
+        let _ = self.0.unlock();
+    }
+}
+
 impl System for Real {
-    type Held = fs::File;
+    type Held = Held;
 
     fn environment(&self) -> &Environment {
         &self.environment
@@ -381,7 +394,7 @@ impl System for Real {
             .open(path)
             .map_err(|error| step_failed(&error, path))?;
         match file.try_lock() {
-            Ok(()) => Ok(Some(file)),
+            Ok(()) => Ok(Some(Held(file))),
             Err(fs::TryLockError::WouldBlock) => Ok(None),
             Err(fs::TryLockError::Error(error)) => Err(step_failed(&error, path)),
         }

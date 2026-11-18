@@ -22,6 +22,7 @@
           "action": "keep",
           "rule": "worktree.keep",
           "outcome": "none",
+          "archive": null,
           "tests": [],
           "reasons": [{ "code": "main-worktree", "detail": "the main worktree" }],
           "survives": [],
@@ -37,6 +38,7 @@
           "action": "remove",
           "rule": "worktree.remove",
           "outcome": "done",
+          "archive": null,
           "tests": [{ "name": "idle", "ok": true, "detail": "idle 3h of the 1h needed" }],
           "reasons": [],
           "survives": [
@@ -58,6 +60,7 @@
           "action": "prune",
           "rule": "worktree.prune",
           "outcome": "done",
+          "archive": null,
           "tests": [],
           "reasons": [],
           "survives": [],
@@ -73,6 +76,7 @@
           "action": "keep",
           "rule": "worktree.keep",
           "outcome": "none",
+          "archive": null,
           "tests": [],
           "reasons": [
             { "code": "not-landed", "detail": "HEAD is not merged into refs/remotes/origin/main" },
@@ -93,6 +97,7 @@
           "rule": "worktree.remove",
           "outcome": "failed",
           "error": "git worktree remove exited 128: busy",
+          "archive": null,
           "tests": [],
           "reasons": [],
           "survives": [
@@ -114,6 +119,7 @@
           "action": "keep",
           "rule": "worktree.keep",
           "outcome": "none",
+          "archive": null,
           "tests": [],
           "reasons": [{ "code": "locked", "detail": "locked by nhooey since 2026-11-15T09:00:00Z" }],
           "survives": [
@@ -141,6 +147,7 @@
           "action": "keep",
           "rule": "worktree.keep",
           "outcome": "none",
+          "archive": null,
           "tests": [],
           "reasons": [{ "code": "broken", "detail": "its .git file names no worktree of this repository" }],
           "survives": [],
@@ -156,6 +163,7 @@
           "action": "keep",
           "rule": "worktree.keep",
           "outcome": "none",
+          "archive": null,
           "tests": [],
           "reasons": [
             {
@@ -176,6 +184,7 @@
           "action": "keep",
           "rule": "worktree.keep",
           "outcome": "none",
+          "archive": null,
           "tests": [],
           "reasons": [{ "code": "not-landed", "detail": "HEAD is not merged into refs/remotes/origin/main" }],
           "survives": [
@@ -460,6 +469,7 @@
           "action": "keep",
           "rule": "worktree.keep",
           "outcome": "none",
+          "archive": null,
           "tests": [],
           "reasons": [{ "code": "main-worktree", "detail": "the main worktree" }],
           "survives": [],
@@ -527,6 +537,7 @@
           "action": "keep",
           "rule": "worktree.keep",
           "outcome": "none",
+          "archive": null,
           "tests": [],
           "reasons": [{ "code": "main-worktree", "detail": "the main worktree" }],
           "survives": [],
@@ -591,6 +602,7 @@
           "action": "keep",
           "rule": "worktree.keep",
           "outcome": "none",
+          "archive": null,
           "tests": [],
           "reasons": [
             { "code": "main-worktree", "detail": "the main worktree" },

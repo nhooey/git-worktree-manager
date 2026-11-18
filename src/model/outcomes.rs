@@ -20,6 +20,10 @@ pub struct Outcomes {
     pub branches: BTreeMap<String, Outcome>,
     /// By branch name: the archive written for it, and its state.
     pub archives: BTreeMap<String, ArchiveReport>,
+    /// By worktree path: the archive a pruned worktree's `HEAD` needs
+    /// first, from `rules::prune`, and its state.
+    #[serde(default)]
+    pub head_archives: BTreeMap<PathBuf, ArchiveReport>,
     /// The compare pass over the archives written.
     pub compares: Vec<Compare>,
     /// Branches deleted by hand that the run archived from the log.
