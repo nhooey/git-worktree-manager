@@ -451,6 +451,10 @@ impl System for Fake {
         Ok(())
     }
 
+    fn append_chunks(&mut self, path: &Path, chunks: &[&[u8]]) -> Result<(), Failure> {
+        chunks.iter().try_for_each(|chunk| self.append(path, chunk))
+    }
+
     fn remove(&mut self, path: &Path, inside: &Path) -> Result<bool, Failure> {
         let (path, inside) = (self.absolute(path), self.absolute(inside));
         if !is_inside(&path, &inside) || path == inside {

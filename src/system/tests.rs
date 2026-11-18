@@ -235,6 +235,42 @@ fn test_the_real_pid_is_this_process() {
     assert_eq!(system.pid(), std::process::id());
 }
 
+/// A writer whose first `write` takes only `short` bytes.
+struct ShortOnce {
+    short: Option<usize>,
+    written: Vec<u8>,
+}
+
+impl std::io::Write for ShortOnce {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let taken = self
+            .short
+            .take()
+            .map_or(buf.len(), |short| short.min(buf.len()));
+        self.written.extend_from_slice(&buf[..taken]);
+        Ok(taken)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+#[test]
+fn test_a_short_write_is_finished_before_it_fails() {
+    let mut out = ShortOnce {
+        short: Some(3),
+        written: Vec::new(),
+    };
+    let chunks: [&[u8]; 2] = [b"one\ntwo\n", b"three\n"];
+    let result = super::real::write_chunks(&mut out, Path::new("/log"), &chunks);
+    assert!(
+        matches!(&result, Err(failure) if failure.detail.contains("wrote 3 of 8")),
+        "{result:?}"
+    );
+    assert_eq!(out.written, b"one\ntwo\n");
+}
+
 #[test]
 fn test_failures_carry_a_code() {
     assert_eq!(

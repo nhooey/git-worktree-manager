@@ -112,6 +112,29 @@ fn make_parent(path: &Path) -> Result<(), Failure> {
     })
 }
 
+/// Writes each chunk in one `write`, stopping at the first that fails. A
+/// short write's rest is written before the failure is reported, so the
+/// next line appended never joins a line cut short.
+pub(super) fn write_chunks(
+    out: &mut impl Write,
+    path: &Path,
+    chunks: &[&[u8]],
+) -> Result<(), Failure> {
+    chunks.iter().try_for_each(|chunk| match out.write(chunk) {
+        Ok(written) if written == chunk.len() => Ok(()),
+        Ok(written) => Err(Failure::step_failed(format!(
+            "{}: wrote {written} of {} bytes in one write, the rest {}",
+            path.display(),
+            chunk.len(),
+            match out.write_all(&chunk[written..]) {
+                Ok(()) => "after it".to_owned(),
+                Err(error) => format!("not: {error}"),
+            }
+        ))),
+        Err(error) => Err(step_failed(&error, path)),
+    })
+}
+
 impl System for Real {
     type Held = fs::File;
 
@@ -304,6 +327,16 @@ impl System for Real {
                 line.len()
             )))
         }
+    }
+
+    fn append_chunks(&mut self, path: &Path, chunks: &[&[u8]]) -> Result<(), Failure> {
+        make_parent(path)?;
+        let mut file = fs::OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open(path)
+            .map_err(|error| step_failed(&error, path))?;
+        write_chunks(&mut file, path, chunks)
     }
 
     fn remove(&mut self, path: &Path, inside: &Path) -> Result<bool, Failure> {

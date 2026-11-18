@@ -195,6 +195,10 @@ pub trait System {
     /// once never interleave.
     fn append(&mut self, path: &Path, line: &[u8]) -> Result<(), Failure>;
 
+    /// Appends each chunk, whole lines under 4 KB, as [`System::append`]
+    /// does, opening `path` once, and stops at the first that fails.
+    fn append_chunks(&mut self, path: &Path, chunks: &[&[u8]]) -> Result<(), Failure>;
+
     /// Deletes `path`, a file, link or folder strictly inside `inside`,
     /// both read as real paths; false when it was gone already.
     fn remove(&mut self, path: &Path, inside: &Path) -> Result<bool, Failure>;
