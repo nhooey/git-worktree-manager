@@ -1,0 +1,30 @@
+#!/bin/sh
+# worktrees: the program's one entry point.
+#
+# It runs the Python package beside this file: `python3 -m worktrees`.
+
+# The Nix package writes its store paths here; in a clone they stay empty.
+packaged_root=
+packaged_python=
+packaged_path=
+
+if [ -n "$packaged_root" ]; then
+	root=$packaged_root
+else
+	self=$0
+	while [ -L "$self" ]; do
+		link=$(readlink -- "$self")
+		case $link in
+		/*) self=$link ;;
+		*) self=$(dirname -- "$self")/$link ;;
+		esac
+	done
+	root=$(cd -- "$(dirname -- "$self")/.." && pwd -P)
+fi
+PYTHONPATH=$root${PYTHONPATH:+:$PYTHONPATH}
+export PYTHONPATH
+if [ -n "$packaged_path" ]; then
+	PATH=$PATH:$packaged_path
+	export PATH
+fi
+exec "${packaged_python:-python3}" -m worktrees "$@"
