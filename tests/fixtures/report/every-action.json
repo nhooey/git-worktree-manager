@@ -1,0 +1,664 @@
+{
+  "schema": 1,
+  "command": "sweep",
+  "dry_run": false,
+  "time": "2026-11-19T09:12:00Z",
+  "repositories": [
+    {
+      "path": "/r/app",
+      "common_dir": "/r/app/.git",
+      "default": {
+        "branch": "main",
+        "ref": "refs/remotes/origin/main",
+        "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "problem": null,
+      "worktrees": [
+        {
+          "path": "/r/app",
+          "branch": "main",
+          "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "main": true,
+          "action": "keep",
+          "rule": "worktree.keep",
+          "outcome": "none",
+          "tests": [],
+          "reasons": [{ "code": "main-worktree", "detail": "the main worktree" }],
+          "survives": [],
+          "lock": null,
+          "attention": [],
+          "bytes": null
+        },
+        {
+          "path": "/r/app.worktrees/fix",
+          "branch": "fix",
+          "head": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "main": false,
+          "action": "remove",
+          "rule": "worktree.remove",
+          "outcome": "done",
+          "tests": [{ "name": "idle", "ok": true, "detail": "idle 3h of the 1h needed" }],
+          "reasons": [],
+          "survives": [
+            {
+              "kind": "merged",
+              "ref": "refs/remotes/origin/main",
+              "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          ],
+          "lock": null,
+          "attention": [],
+          "bytes": 2048
+        },
+        {
+          "path": "/r/app.worktrees/gone",
+          "branch": null,
+          "head": null,
+          "main": false,
+          "action": "prune",
+          "rule": "worktree.prune",
+          "outcome": "done",
+          "tests": [],
+          "reasons": [],
+          "survives": [],
+          "lock": null,
+          "attention": [],
+          "bytes": null
+        },
+        {
+          "path": "/r/app.worktrees/wip",
+          "branch": "wip",
+          "head": "cccccccccccccccccccccccccccccccccccccccc",
+          "main": false,
+          "action": "keep",
+          "rule": "worktree.keep",
+          "outcome": "none",
+          "tests": [],
+          "reasons": [
+            { "code": "not-landed", "detail": "HEAD is not merged into refs/remotes/origin/main" },
+            { "code": "uncommitted", "detail": "2 uncommitted paths" },
+            { "code": "not-idle", "detail": "idle 5m of the 1h needed" }
+          ],
+          "survives": [],
+          "lock": null,
+          "attention": [{ "code": "uncommitted", "detail": "2 uncommitted paths" }],
+          "bytes": null
+        },
+        {
+          "path": "/r/app.worktrees/stuck",
+          "branch": "stuck",
+          "head": "dddddddddddddddddddddddddddddddddddddddd",
+          "main": false,
+          "action": "remove",
+          "rule": "worktree.remove",
+          "outcome": "failed",
+          "error": "git worktree remove exited 128: busy",
+          "tests": [],
+          "reasons": [],
+          "survives": [
+            {
+              "kind": "merged",
+              "ref": "refs/remotes/origin/main",
+              "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          ],
+          "lock": null,
+          "attention": [],
+          "bytes": null
+        },
+        {
+          "path": "/r/app.worktrees/old",
+          "branch": "old",
+          "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "main": false,
+          "action": "keep",
+          "rule": "worktree.keep",
+          "outcome": "none",
+          "tests": [],
+          "reasons": [{ "code": "locked", "detail": "locked by nhooey since 2026-11-15T09:00:00Z" }],
+          "survives": [
+            {
+              "kind": "merged",
+              "ref": "refs/remotes/origin/main",
+              "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          ],
+          "lock": {
+            "reason": "nhooey since 2026-11-15T09:00:00Z",
+            "who": "nhooey",
+            "pid": null,
+            "since": "2026-11-15T09:00:00Z",
+            "alive": null
+          },
+          "attention": [{ "code": "locked-landed", "detail": "landed and locked 4d, longer than 1d" }],
+          "bytes": null
+        },
+        {
+          "path": "/r/app.worktrees/odd",
+          "branch": null,
+          "head": null,
+          "main": false,
+          "action": "keep",
+          "rule": "worktree.keep",
+          "outcome": "none",
+          "tests": [],
+          "reasons": [{ "code": "broken", "detail": "its .git file names no worktree of this repository" }],
+          "survives": [],
+          "lock": null,
+          "attention": [{ "code": "broken", "detail": "its .git file names no worktree of this repository" }],
+          "bytes": null
+        },
+        {
+          "path": "/r/app.worktrees/spike",
+          "branch": "preview/spike",
+          "head": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "main": false,
+          "action": "keep",
+          "rule": "worktree.keep",
+          "outcome": "none",
+          "tests": [],
+          "reasons": [
+            {
+              "code": "archive-failed",
+              "detail": "branch preview/spike stays: archive refs/archive/preview/spike/2026-11-19T09:12:00Z failed its compare: rev-list: missing object"
+            }
+          ],
+          "survives": [],
+          "lock": null,
+          "attention": [],
+          "bytes": null
+        },
+        {
+          "path": "/r/app.worktrees/draft",
+          "branch": "review",
+          "head": "ffffffffffffffffffffffffffffffffffffffff",
+          "main": false,
+          "action": "keep",
+          "rule": "worktree.keep",
+          "outcome": "none",
+          "tests": [],
+          "reasons": [{ "code": "not-landed", "detail": "HEAD is not merged into refs/remotes/origin/main" }],
+          "survives": [
+            {
+              "kind": "pushed",
+              "ref": "refs/remotes/origin/review",
+              "oid": "ffffffffffffffffffffffffffffffffffffffff"
+            }
+          ],
+          "lock": null,
+          "attention": [],
+          "bytes": null
+        }
+      ],
+      "branches": [
+        {
+          "name": "main",
+          "tip": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "upstream": { "ref": "refs/remotes/origin/main", "gone": false, "ahead": 0, "behind": 0 },
+          "state": "default-branch",
+          "action": "keep",
+          "rule": "branch.default",
+          "outcome": "none",
+          "archive": null,
+          "worktree": "/r/app",
+          "reasons": [{ "code": "default-branch", "detail": "the default branch" }],
+          "survives": [],
+          "attention": []
+        },
+        {
+          "name": "fix",
+          "tip": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "upstream": { "ref": "refs/remotes/origin/fix", "gone": true, "ahead": 0, "behind": 0 },
+          "state": "landed",
+          "action": "delete",
+          "rule": "branch.landed",
+          "outcome": "done",
+          "archive": null,
+          "worktree": "/r/app.worktrees/fix",
+          "reasons": [],
+          "survives": [
+            {
+              "kind": "merged",
+              "ref": "refs/remotes/origin/main",
+              "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          ],
+          "attention": []
+        },
+        {
+          "name": "preview/demo",
+          "tip": "1111111111111111111111111111111111111111",
+          "upstream": null,
+          "state": "disposable",
+          "action": "delete",
+          "rule": "branch.disposable",
+          "outcome": "done",
+          "archive": { "ref": "refs/archive/preview/demo/2026-11-19T09:12:00Z", "state": "verified" },
+          "worktree": null,
+          "reasons": [],
+          "survives": [],
+          "attention": []
+        },
+        {
+          "name": "stuck",
+          "tip": "dddddddddddddddddddddddddddddddddddddddd",
+          "upstream": null,
+          "state": "landed",
+          "action": "keep",
+          "rule": "branch.landed",
+          "outcome": "none",
+          "archive": null,
+          "worktree": "/r/app.worktrees/stuck",
+          "reasons": [
+            { "code": "checked-out", "detail": "checked out in /r/app.worktrees/stuck, which stays" }
+          ],
+          "survives": [
+            {
+              "kind": "merged",
+              "ref": "refs/remotes/origin/main",
+              "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          ],
+          "attention": []
+        },
+        {
+          "name": "preview/spike",
+          "tip": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "upstream": null,
+          "state": "disposable",
+          "action": "keep",
+          "rule": "branch.disposable",
+          "outcome": "none",
+          "archive": { "ref": "refs/archive/preview/spike/2026-11-19T09:12:00Z", "state": "failed" },
+          "worktree": "/r/app.worktrees/spike",
+          "reasons": [
+            {
+              "code": "archive-failed",
+              "detail": "archive refs/archive/preview/spike/2026-11-19T09:12:00Z failed its compare: rev-list: missing object"
+            }
+          ],
+          "survives": [],
+          "attention": [
+            {
+              "code": "archive-failed",
+              "detail": "archive refs/archive/preview/spike/2026-11-19T09:12:00Z failed its compare: rev-list: missing object"
+            }
+          ]
+        },
+        {
+          "name": "drifted",
+          "tip": "2222222222222222222222222222222222222222",
+          "upstream": { "ref": "refs/remotes/origin/drifted", "gone": false, "ahead": 1, "behind": 2 },
+          "state": "diverged",
+          "action": "keep",
+          "rule": "branch.diverged",
+          "outcome": "none",
+          "archive": null,
+          "worktree": null,
+          "reasons": [{ "code": "diverged", "detail": "ahead 1, behind 2 of refs/remotes/origin/drifted" }],
+          "survives": [],
+          "attention": [{ "code": "diverged", "detail": "ahead 1, behind 2 of refs/remotes/origin/drifted" }]
+        },
+        {
+          "name": "orphan",
+          "tip": "3333333333333333333333333333333333333333",
+          "upstream": { "ref": "refs/remotes/origin/orphan", "gone": true, "ahead": 0, "behind": 0 },
+          "state": "upstream-gone",
+          "action": "keep",
+          "rule": "branch.upstream-gone",
+          "outcome": "none",
+          "archive": null,
+          "worktree": null,
+          "reasons": [{ "code": "upstream-gone", "detail": "refs/remotes/origin/orphan is gone" }],
+          "survives": [],
+          "attention": [{ "code": "upstream-gone", "detail": "refs/remotes/origin/orphan is gone" }]
+        },
+        {
+          "name": "idea",
+          "tip": "4444444444444444444444444444444444444444",
+          "upstream": null,
+          "state": "local-only",
+          "action": "keep",
+          "rule": "branch.local-only",
+          "outcome": "none",
+          "archive": null,
+          "worktree": null,
+          "reasons": [{ "code": "local-only", "detail": "no upstream" }],
+          "survives": [],
+          "attention": [{ "code": "local-only-old", "detail": "tip 9d old, older than 7d" }]
+        },
+        {
+          "name": "review",
+          "tip": "ffffffffffffffffffffffffffffffffffffffff",
+          "upstream": { "ref": "refs/remotes/origin/review", "gone": false, "ahead": 0, "behind": 0 },
+          "state": "in-review",
+          "action": "keep",
+          "rule": "branch.in-review",
+          "outcome": "none",
+          "archive": null,
+          "worktree": "/r/app.worktrees/draft",
+          "reasons": [
+            { "code": "in-review", "detail": "refs/remotes/origin/review exists" },
+            { "code": "checked-out", "detail": "checked out in /r/app.worktrees/draft" }
+          ],
+          "survives": [
+            {
+              "kind": "pushed",
+              "ref": "refs/remotes/origin/review",
+              "oid": "ffffffffffffffffffffffffffffffffffffffff"
+            }
+          ],
+          "attention": []
+        },
+        {
+          "name": "old",
+          "tip": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "upstream": null,
+          "state": "landed",
+          "action": "keep",
+          "rule": "branch.landed",
+          "outcome": "none",
+          "archive": null,
+          "worktree": "/r/app.worktrees/old",
+          "reasons": [{ "code": "checked-out", "detail": "checked out in /r/app.worktrees/old" }],
+          "survives": [
+            {
+              "kind": "merged",
+              "ref": "refs/remotes/origin/main",
+              "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          ],
+          "attention": []
+        },
+        {
+          "name": "skipped",
+          "tip": "8888888888888888888888888888888888888888",
+          "upstream": null,
+          "state": "landed",
+          "action": "delete",
+          "rule": "branch.landed",
+          "outcome": "none",
+          "archive": null,
+          "worktree": null,
+          "reasons": [],
+          "survives": [
+            {
+              "kind": "merged",
+              "ref": "refs/remotes/origin/main",
+              "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          ],
+          "attention": []
+        }
+      ],
+      "backup": {
+        "path": "/h/backups/git-archive/n/app.git",
+        "archived": 3,
+        "verified": 2,
+        "failed": 1,
+        "compares": [
+          {
+            "ref": "refs/archive/preview/demo/2026-11-19T09:12:00Z",
+            "oid": "1111111111111111111111111111111111111111",
+            "ok": true,
+            "detail": null
+          },
+          {
+            "ref": "refs/archive/preview/spike/2026-11-19T09:12:00Z",
+            "oid": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "ok": false,
+            "detail": "rev-list: missing object"
+          },
+          {
+            "ref": "refs/archive/lost/2026-11-19T09:12:00Z",
+            "oid": "5555555555555555555555555555555555555555",
+            "ok": true,
+            "detail": null
+          }
+        ]
+      },
+      "rescues": [
+        {
+          "branch": "lost",
+          "tip": "5555555555555555555555555555555555555555",
+          "archive": { "ref": "refs/archive/lost/2026-11-19T09:12:00Z", "state": "verified" },
+          "outcome": "done"
+        }
+      ],
+      "totals": {
+        "archives.failed": 1,
+        "archives.planned": 0,
+        "archives.verified": 2,
+        "archives.written": 3,
+        "attention": 7,
+        "branches.delete": 2,
+        "branches.keep": 8,
+        "failed": 1,
+        "problems": 0,
+        "repositories": 1,
+        "rescues": 1,
+        "worktrees.keep": 6,
+        "worktrees.prune": 1,
+        "worktrees.remove": 1
+      }
+    },
+    {
+      "path": "/r/quiet",
+      "common_dir": "/r/quiet/.git",
+      "default": {
+        "branch": "main",
+        "ref": "refs/remotes/origin/main",
+        "oid": "6666666666666666666666666666666666666666"
+      },
+      "problem": null,
+      "worktrees": [
+        {
+          "path": "/r/quiet",
+          "branch": "main",
+          "head": "6666666666666666666666666666666666666666",
+          "main": true,
+          "action": "keep",
+          "rule": "worktree.keep",
+          "outcome": "none",
+          "tests": [],
+          "reasons": [{ "code": "main-worktree", "detail": "the main worktree" }],
+          "survives": [],
+          "lock": null,
+          "attention": [],
+          "bytes": null
+        }
+      ],
+      "branches": [
+        {
+          "name": "main",
+          "tip": "6666666666666666666666666666666666666666",
+          "upstream": { "ref": "refs/remotes/origin/main", "gone": false, "ahead": 0, "behind": 0 },
+          "state": "default-branch",
+          "action": "keep",
+          "rule": "branch.default",
+          "outcome": "none",
+          "archive": null,
+          "worktree": "/r/quiet",
+          "reasons": [{ "code": "default-branch", "detail": "the default branch" }],
+          "survives": [],
+          "attention": []
+        }
+      ],
+      "backup": {
+        "path": "/h/backups/git-archive/n/quiet.git",
+        "archived": 0,
+        "verified": 0,
+        "failed": 0,
+        "compares": []
+      },
+      "rescues": [],
+      "totals": {
+        "archives.failed": 0,
+        "archives.planned": 0,
+        "archives.verified": 0,
+        "archives.written": 0,
+        "attention": 0,
+        "branches.delete": 0,
+        "branches.keep": 1,
+        "failed": 0,
+        "problems": 0,
+        "repositories": 1,
+        "rescues": 0,
+        "worktrees.keep": 1,
+        "worktrees.prune": 0,
+        "worktrees.remove": 0
+      }
+    },
+    {
+      "path": "/r/failing",
+      "common_dir": "/r/failing/.git",
+      "default": {
+        "branch": "main",
+        "ref": "refs/remotes/origin/main",
+        "oid": "9999999999999999999999999999999999999999"
+      },
+      "problem": null,
+      "worktrees": [
+        {
+          "path": "/r/failing",
+          "branch": "main",
+          "head": "9999999999999999999999999999999999999999",
+          "main": true,
+          "action": "keep",
+          "rule": "worktree.keep",
+          "outcome": "none",
+          "tests": [],
+          "reasons": [{ "code": "main-worktree", "detail": "the main worktree" }],
+          "survives": [],
+          "lock": null,
+          "attention": [],
+          "bytes": null
+        }
+      ],
+      "branches": [
+        {
+          "name": "main",
+          "tip": "9999999999999999999999999999999999999999",
+          "upstream": { "ref": "refs/remotes/origin/main", "gone": false, "ahead": 0, "behind": 0 },
+          "state": "default-branch",
+          "action": "keep",
+          "rule": "branch.default",
+          "outcome": "failed",
+          "error": "cannot lock ref refs/heads/main",
+          "archive": null,
+          "worktree": "/r/failing",
+          "reasons": [{ "code": "default-branch", "detail": "the default branch" }],
+          "survives": [],
+          "attention": []
+        }
+      ],
+      "backup": {
+        "path": "/h/backups/git-archive/n/failing.git",
+        "archived": 0,
+        "verified": 0,
+        "failed": 0,
+        "compares": []
+      },
+      "rescues": [],
+      "totals": {
+        "archives.failed": 0,
+        "archives.planned": 0,
+        "archives.verified": 0,
+        "archives.written": 0,
+        "attention": 0,
+        "branches.delete": 0,
+        "branches.keep": 1,
+        "failed": 1,
+        "problems": 0,
+        "repositories": 1,
+        "rescues": 0,
+        "worktrees.keep": 1,
+        "worktrees.prune": 0,
+        "worktrees.remove": 0
+      }
+    },
+    {
+      "path": "/r/nodefault",
+      "common_dir": "/r/nodefault/.git",
+      "default": null,
+      "problem": { "code": "no-default-branch", "detail": "no refs/remotes/origin/HEAD, manifest entry or --default-branch" },
+      "worktrees": [
+        {
+          "path": "/r/nodefault",
+          "branch": "trunk",
+          "head": "7777777777777777777777777777777777777777",
+          "main": true,
+          "action": "keep",
+          "rule": "worktree.keep",
+          "outcome": "none",
+          "tests": [],
+          "reasons": [
+            { "code": "main-worktree", "detail": "the main worktree" },
+            { "code": "no-default-branch", "detail": "no default branch" }
+          ],
+          "survives": [],
+          "lock": null,
+          "attention": [],
+          "bytes": null
+        }
+      ],
+      "branches": [
+        {
+          "name": "trunk",
+          "tip": "7777777777777777777777777777777777777777",
+          "upstream": null,
+          "state": "no-default-branch",
+          "action": "keep",
+          "rule": "branch.no-default",
+          "outcome": "none",
+          "archive": null,
+          "worktree": "/r/nodefault",
+          "reasons": [{ "code": "no-default-branch", "detail": "no default branch" }],
+          "survives": [],
+          "attention": []
+        }
+      ],
+      "backup": {
+        "path": "/h/backups/git-archive/local/nodefault.git",
+        "archived": 0,
+        "verified": 0,
+        "failed": 0,
+        "compares": []
+      },
+      "rescues": [],
+      "totals": {
+        "archives.failed": 0,
+        "archives.planned": 0,
+        "archives.verified": 0,
+        "archives.written": 0,
+        "attention": 0,
+        "branches.delete": 0,
+        "branches.keep": 1,
+        "failed": 0,
+        "problems": 1,
+        "repositories": 1,
+        "rescues": 0,
+        "worktrees.keep": 1,
+        "worktrees.prune": 0,
+        "worktrees.remove": 0
+      }
+    }
+  ],
+  "totals": {
+    "archives.failed": 1,
+    "archives.planned": 0,
+    "archives.verified": 2,
+    "archives.written": 3,
+    "attention": 7,
+    "branches.delete": 2,
+    "branches.keep": 11,
+    "failed": 2,
+    "problems": 1,
+    "repositories": 4,
+    "rescues": 1,
+    "worktrees.keep": 9,
+    "worktrees.prune": 1,
+    "worktrees.remove": 1
+  },
+  "backup_note": "3 new archives in ~/backups/git-archive/; back up ~/backups/"
+}

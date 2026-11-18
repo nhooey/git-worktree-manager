@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "command": "status",
+  "dry_run": true,
+  "time": "2026-11-19T09:12:00Z",
+  "repositories": [],
+  "totals": {
+    "archives.failed": 0,
+    "archives.planned": 0,
+    "archives.verified": 0,
+    "archives.written": 0,
+    "attention": 0,
+    "branches.delete": 0,
+    "branches.keep": 0,
+    "failed": 0,
+    "problems": 0,
+    "repositories": 0,
+    "rescues": 0,
+    "worktrees.keep": 0,
+    "worktrees.prune": 0,
+    "worktrees.remove": 0
+  },
+  "backup_note": null
+}

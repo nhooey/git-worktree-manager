@@ -89,7 +89,8 @@
 
           # The Rust crate. crane reads its name and version from Cargo.toml,
           # and builds its dependencies once for every check below. The
-          # source is the cargo files and the JSON fixtures under src/.
+          # source is the cargo files, the JSON fixtures under src/ and every
+          # fixture under tests/fixtures/.
           craneLib = inputs.crane.mkLib pkgs;
           crate = craneLib.crateNameFromCargoToml { cargoToml = ./Cargo.toml; };
           crateArgs = {
@@ -97,7 +98,9 @@
               src = ./.;
               filter =
                 path: type:
-                craneLib.filterCargoSources path type || (lib.hasInfix "/src/" path && lib.hasSuffix ".json" path);
+                craneLib.filterCargoSources path type
+                || (lib.hasInfix "/src/" path && lib.hasSuffix ".json" path)
+                || lib.hasInfix "/tests/fixtures/" path;
             };
             strictDeps = true;
           };

@@ -1,0 +1,15 @@
+{
+  "command": "sweep",
+  "dry_run": false,
+  "time": "2026-11-19T09:12:00Z",
+  "repositories": [
+    {
+      "path": "/r/broken",
+      "problem": { "code": "unreadable", "detail": "git rev-parse exited 128: not a git repository" }
+    },
+    {
+      "path": "/r/missing",
+      "problem": { "code": "skipped", "detail": "no clone at /r/missing" }
+    }
+  ]
+}

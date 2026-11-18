@@ -1,0 +1,67 @@
+sweep, 2026-11-19T09:12:00Z
+/r/app (refs/remotes/origin/main): archives.failed 1, archives.verified 2, archives.written 3,
+    attention 7, branches.delete 2, branches.keep 8, failed 1, rescues 1, worktrees.keep 6,
+    worktrees.prune 1, worktrees.remove 1
+  worktree  remove  done           worktree.remove       /r/app.worktrees/fix
+      2048 bytes
+  worktree  prune   done           worktree.prune        /r/app.worktrees/gone
+  worktree  keep                   worktree.keep         /r/app.worktrees/wip
+      not-landed: HEAD is not merged into refs/remotes/origin/main
+      uncommitted: 2 uncommitted paths
+      not-idle: idle 5m of the 1h needed
+      attention uncommitted
+  worktree  remove  failed         worktree.remove       /r/app.worktrees/stuck
+      error: git worktree remove exited 128: busy
+  worktree  keep                   worktree.keep         /r/app.worktrees/old
+      locked: locked by nhooey since 2026-11-15T09:00:00Z
+      attention locked-landed: landed and locked 4d, longer than 1d
+  worktree  keep                   worktree.keep         /r/app.worktrees/odd
+      broken: its .git file names no worktree of this repository
+      attention broken
+  worktree  keep                   worktree.keep         /r/app.worktrees/spike
+      archive-failed: branch preview/spike stays: archive
+        refs/archive/preview/spike/2026-11-19T09:12:00Z failed its compare: rev-list: missing object
+  worktree  keep                   worktree.keep         /r/app.worktrees/draft
+      not-landed: HEAD is not merged into refs/remotes/origin/main
+  branch    delete  done           branch.landed         fix
+  branch    delete  done           branch.disposable     preview/demo
+      archive refs/archive/preview/demo/2026-11-19T09:12:00Z verified
+  branch    keep                   branch.landed         stuck
+      checked-out: checked out in /r/app.worktrees/stuck, which stays
+  branch    keep                   branch.disposable     preview/spike
+      archive refs/archive/preview/spike/2026-11-19T09:12:00Z failed
+      archive-failed: archive refs/archive/preview/spike/2026-11-19T09:12:00Z failed its compare:
+        rev-list: missing object
+      attention archive-failed
+  branch    keep                   branch.diverged       drifted
+      diverged: ahead 1, behind 2 of refs/remotes/origin/drifted
+      attention diverged
+  branch    keep                   branch.upstream-gone  orphan
+      upstream-gone: refs/remotes/origin/orphan is gone
+      attention upstream-gone
+  branch    keep                   branch.local-only     idea
+      local-only: no upstream
+      attention local-only-old: tip 9d old, older than 7d
+  branch    keep                   branch.in-review      review
+      in-review: refs/remotes/origin/review exists
+      checked-out: checked out in /r/app.worktrees/draft
+  branch    keep                   branch.landed         old
+      checked-out: checked out in /r/app.worktrees/old
+  branch    delete  not attempted  branch.landed         skipped
+  branch    rescue  done                                 lost
+      tip 5555555555555555555555555555555555555555
+      archive refs/archive/lost/2026-11-19T09:12:00Z verified
+  backup /h/backups/git-archive/n/app.git: archived 3, verified 2, failed 1
+  compare failed: refs/archive/preview/spike/2026-11-19T09:12:00Z
+    eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee: rev-list: missing object
+/r/quiet (refs/remotes/origin/main): branches.keep 1, worktrees.keep 1
+/r/failing (refs/remotes/origin/main): branches.keep 1, failed 1, worktrees.keep 1
+  branch  keep  failed  branch.default  main
+      error: cannot lock ref refs/heads/main
+      default-branch: the default branch
+/r/nodefault: no-default-branch: no refs/remotes/origin/HEAD, manifest entry or --default-branch;
+    branches.keep 1, worktrees.keep 1
+totals: archives.failed 1, archives.verified 2, archives.written 3, attention 7, branches.delete 2,
+  branches.keep 11, failed 2, problems 1, repositories 4, rescues 1, worktrees.keep 9,
+  worktrees.prune 1, worktrees.remove 1
+3 new archives in ~/backups/git-archive/; back up ~/backups/
