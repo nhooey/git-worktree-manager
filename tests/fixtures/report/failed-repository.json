@@ -1,0 +1,79 @@
+{
+  "schema": 1,
+  "command": "sweep",
+  "dry_run": false,
+  "time": "2026-11-19T09:12:00Z",
+  "repositories": [
+    {
+      "path": "/r/broken",
+      "common_dir": null,
+      "default": null,
+      "problem": { "code": "unreadable", "detail": "git rev-parse exited 128: not a git repository" },
+      "worktrees": [],
+      "branches": [],
+      "backup": null,
+      "rescues": [],
+      "build_output": [],
+      "totals": {
+        "archives.failed": 0,
+        "archives.planned": 0,
+        "archives.verified": 0,
+        "archives.written": 0,
+        "attention": 0,
+        "branches.delete": 0,
+        "branches.keep": 0,
+        "failed": 0,
+        "problems": 1,
+        "repositories": 1,
+        "rescues": 0,
+        "worktrees.keep": 0,
+        "worktrees.prune": 0,
+        "worktrees.remove": 0
+      }
+    },
+    {
+      "path": "/r/missing",
+      "common_dir": null,
+      "default": null,
+      "problem": { "code": "skipped", "detail": "no clone at /r/missing" },
+      "worktrees": [],
+      "branches": [],
+      "backup": null,
+      "rescues": [],
+      "build_output": [],
+      "totals": {
+        "archives.failed": 0,
+        "archives.planned": 0,
+        "archives.verified": 0,
+        "archives.written": 0,
+        "attention": 0,
+        "branches.delete": 0,
+        "branches.keep": 0,
+        "failed": 0,
+        "problems": 1,
+        "repositories": 1,
+        "rescues": 0,
+        "worktrees.keep": 0,
+        "worktrees.prune": 0,
+        "worktrees.remove": 0
+      }
+    }
+  ],
+  "totals": {
+    "archives.failed": 0,
+    "archives.planned": 0,
+    "archives.verified": 0,
+    "archives.written": 0,
+    "attention": 0,
+    "branches.delete": 0,
+    "branches.keep": 0,
+    "failed": 0,
+    "problems": 2,
+    "repositories": 2,
+    "rescues": 0,
+    "worktrees.keep": 0,
+    "worktrees.prune": 0,
+    "worktrees.remove": 0
+  },
+  "backup_note": null
+}

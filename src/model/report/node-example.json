@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "command": "sweep",
+  "dry_run": true,
+  "time": "2026-11-19T09:12:00Z",
+  "repositories": [
+    {
+      "path": "/Users/…/app",
+      "common_dir": "/Users/…/app/.git",
+      "default": {
+        "branch": "main",
+        "ref": "refs/remotes/origin/main",
+        "oid": "…"
+      },
+      "problem": null,
+      "worktrees": [
+        {
+          "path": "/Users/…/app.worktrees/fix",
+          "branch": "fix",
+          "head": "…",
+          "main": false,
+          "action": "remove",
+          "rule": "worktree.remove",
+          "outcome": "planned",
+          "archive": null,
+          "tests": [
+            { "name": "idle", "ok": true, "detail": "idle 3h of the 1h needed" }
+          ],
+          "reasons": [],
+          "survives": [
+            { "kind": "merged", "ref": "refs/remotes/origin/main", "oid": "…" }
+          ],
+          "lock": null,
+          "attention": [],
+          "bytes": null
+        }
+      ],
+      "branches": [
+        {
+          "name": "fix",
+          "tip": "…",
+          "upstream": {
+            "ref": "refs/remotes/origin/fix",
+            "gone": true,
+            "ahead": 0,
+            "behind": 0
+          },
+          "state": "landed",
+          "action": "delete",
+          "rule": "branch.landed",
+          "outcome": "planned",
+          "archive": null,
+          "worktree": "/Users/…/app.worktrees/fix",
+          "reasons": [],
+          "survives": [
+            { "kind": "merged", "ref": "refs/remotes/origin/main", "oid": "…" }
+          ],
+          "attention": []
+        }
+      ],
+      "backup": {
+        "path": "…",
+        "archived": 0,
+        "verified": 0,
+        "failed": 0,
+        "compares": []
+      },
+      "rescues": [],
+      "build_output": [],
+      "totals": {}
+    }
+  ],
+  "totals": {},
+  "backup_note": null
+}

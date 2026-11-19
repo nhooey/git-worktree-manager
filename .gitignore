@@ -8,7 +8,4 @@
 /.claude/skills/
 /.claude/settings.local.json
 
-__pycache__/
-*.egg-info/
-/build/
-/dist/
+/target/

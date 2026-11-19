@@ -23,6 +23,8 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    crane.url = "github:ipetkov/crane";
+
     treefmt-nix = {
       url = "github:numtide/treefmt-nix";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -47,7 +49,7 @@
       # so the name must not be a command's: inside this devshell it would
       # shadow the real command.
       agent-skill-flake.devshellSkills = {
-        name = "nix-worktrees-dev";
+        name = "git-worktree-manager-dev";
       };
 
       perSystem =
@@ -58,115 +60,101 @@
           ...
         }:
         let
-          # What the program runs besides Python: git, ps (adv_cmds on macOS,
-          # procps elsewhere; a Nix builder can't run macOS's setuid /bin/ps),
-          # du from coreutils, and awk and date for the hooks.
+          # What the binary runs: git, and ps (adv_cmds on macOS, procps
+          # elsewhere; a Nix builder can't run macOS's setuid /bin/ps). The
+          # package isn't wrapped: the hook's shim starts it once per
+          # committed transaction, and a wrapper would add one more process
+          # start to each. It finds both on the PATH.
           runtimeInputs = [
             pkgs.git
             pkgs.ps
-            pkgs.coreutils
-            pkgs.gawk
           ];
 
-          # The one version, `__version__` in worktrees/__init__.py.
-          version = lib.pipe ./worktrees/__init__.py [
-            builtins.readFile
-            (lib.splitString "\n")
-            (lib.findFirst (lib.hasPrefix "__version__ = ") "")
-            (lib.removePrefix "__version__ = \"")
-            (lib.removeSuffix "\"")
-          ];
-
-          source = lib.fileset.toSource {
-            root = ./.;
-            fileset = lib.fileset.unions [
-              ./bin
-              ./worktrees
-            ];
+          # The crate. crane reads its name and version from Cargo.toml, and
+          # builds its dependencies once for every check below. The source
+          # is the cargo files, the JSON fixtures under src/ and every
+          # fixture under tests/fixtures/.
+          craneLib = inputs.crane.mkLib pkgs;
+          crate = craneLib.crateNameFromCargoToml { cargoToml = ./Cargo.toml; };
+          crateArgs = {
+            src = lib.cleanSourceWith {
+              src = ./.;
+              filter =
+                path: type:
+                craneLib.filterCargoSources path type
+                || (lib.hasInfix "/src/" path && lib.hasSuffix ".json" path)
+                || lib.hasInfix "/tests/fixtures/" path;
+            };
+            strictDeps = true;
           };
+          cargoArtifacts = craneLib.buildDepsOnly crateArgs;
         in
         {
           packages = {
-            # `bin/worktrees`, the sh entry point, with the package's paths
-            # written into its `packaged_*` lines. The hooks' functions run in
-            # sh before Python is reached, and the system's tools come first on
-            # the PATH, so the user's git, ps and awk win where they exist.
-            worktrees = pkgs.stdenvNoCC.mkDerivation {
-              pname = "worktrees";
-              inherit version;
-              src = source;
-              dontConfigure = true;
-              dontBuild = true;
-              installPhase = ''
-                runHook preInstall
-                mkdir -p $out/bin $out/lib/worktrees
-                cp -r worktrees $out/lib/worktrees/
-                rm -rf $out/lib/worktrees/worktrees/tests
-                substitute bin/worktrees $out/bin/worktrees \
-                  --replace-fail 'packaged_root=' 'packaged_root=${placeholder "out"}/lib/worktrees' \
-                  --replace-fail 'packaged_python=' 'packaged_python=${lib.getExe pkgs.python3}' \
-                  --replace-fail 'packaged_path=' 'packaged_path=${lib.makeBinPath runtimeInputs}'
-                chmod +x $out/bin/worktrees
-                runHook postInstall
-              '';
-              meta = {
-                description = "Remove git worktrees and branches once their work lands, and lose nothing";
-                license = lib.licenses.asl20;
-                mainProgram = "worktrees";
-              };
-            };
-            default = config.packages.worktrees;
+            # The binary, under the name in Cargo.toml. Its tests run in the
+            # `crate-tests` check.
+            ${crate.pname} = craneLib.buildPackage (
+              crateArgs
+              // {
+                inherit cargoArtifacts;
+                doCheck = false;
+                meta = {
+                  description = "Remove git worktrees and branches once their work lands, and lose nothing";
+                  license = lib.licenses.asl20;
+                  mainProgram = crate.pname;
+                };
+              }
+            );
+            default = config.packages.${crate.pname};
           };
 
           checks = {
-            package = config.packages.worktrees;
+            package = config.packages.default;
 
-            # The package runs: `--help`, and a dry run in a fresh repository.
-            package-runs = pkgs.runCommand "worktrees-package-runs" {
-              nativeBuildInputs = [ pkgs.git ];
-              worktrees = lib.getExe config.packages.worktrees;
-            } (builtins.readFile ./checks/package-runs.sh);
+            # The package runs: `git-worktree-manager --version` prints the
+            # version in Cargo.toml.
+            package-runs = pkgs.testers.testVersion {
+              package = config.packages.default;
+              inherit (crate) version;
+            };
 
-            # The unit tests of the core and the rules, the command tests over
-            # temporary git repositories, the hooks' tests and the 1,000-ref
-            # fetch timing test.
-            tests = pkgs.runCommand "worktrees-tests" {
-              nativeBuildInputs = [ pkgs.python3 ] ++ runtimeInputs;
-              sourceTree = ./.;
-            } (builtins.readFile ./checks/tests.sh);
+            # The tests that run git and ps do so in temporary repositories.
+            crate-tests = craneLib.cargoTest (
+              crateArgs
+              // {
+                inherit cargoArtifacts;
+                nativeCheckInputs = [ pkgs.fish ] ++ runtimeInputs;
+              }
+            );
+
+            crate-clippy = craneLib.cargoClippy (
+              crateArgs
+              // {
+                inherit cargoArtifacts;
+                cargoClippyExtraArgs = "--all-targets -- --deny warnings";
+              }
+            );
           };
 
           treefmt = {
             projectRootFile = "flake.nix";
             programs = {
               nixfmt.enable = true;
-              ruff-format.enable = true;
-              ruff-check.enable = true;
-              shellcheck.enable = true;
+              rustfmt.enable = true;
             };
-            settings.formatter.shellcheck.includes = [
-              "bin/worktrees"
-              "checks/*.sh"
-            ];
           };
 
+          # fish runs the `env --shell fish` test, which cargo test skips
+          # without it.
           devshells.default = {
-            packages = [ pkgs.python3 ] ++ runtimeInputs;
-
-            commands = [
-              {
-                category = "worktrees";
-                name = "worktrees";
-                help = "The worktrees program, from this checkout";
-                command = ''exec "$PRJ_ROOT/bin/worktrees" "$@"'';
-              }
-              {
-                category = "dev";
-                name = "tests";
-                help = "Run every test (python3 -m unittest)";
-                command = ''cd "$PRJ_ROOT" && exec python3 -m unittest discover --start-directory worktrees/tests --top-level-directory . "$@"'';
-              }
-            ];
+            packages = [
+              pkgs.cargo
+              pkgs.clippy
+              pkgs.fish
+              pkgs.rustc
+              pkgs.rustfmt
+            ]
+            ++ runtimeInputs;
           };
         };
     };

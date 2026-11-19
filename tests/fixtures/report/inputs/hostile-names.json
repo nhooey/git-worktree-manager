@@ -1,0 +1,184 @@
+{
+  "command": "sweep",
+  "dry_run": true,
+  "time": "2026-11-19T09:12:00Z",
+  "repositories": [
+    {
+      "plan": {
+        "path": "/r/we|rd_*repo*",
+        "common_dir": "/r/we|rd_*repo*/.git",
+        "default": {
+          "branch": "main",
+          "ref": "refs/remotes/origin/main",
+          "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "problem": null,
+        "worktrees": [
+          {
+            "path": "/r/we|rd_*repo*",
+            "branch": "main",
+            "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "main": true,
+            "action": "keep",
+            "rule": "worktree.keep",
+            "tests": [],
+            "reasons": [{ "code": "main-worktree", "detail": "the main worktree" }],
+            "survives": [],
+            "lock": null,
+            "attention": [],
+            "bytes": null
+          },
+          {
+            "path": "/r/we|rd_*repo*.worktrees/`tick`",
+            "branch": "`tick`",
+            "head": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "main": false,
+            "action": "remove",
+            "rule": "worktree.remove",
+            "tests": [],
+            "reasons": [],
+            "survives": [
+              { "kind": "merged", "ref": "refs/remotes/origin/main", "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+            ],
+            "lock": null,
+            "attention": [],
+            "bytes": null
+          },
+          {
+            "path": "/r/we|rd_*repo*.worktrees/-lead\u001b[2J\n# hash‮exe.txt",
+            "branch": "# hash\n- dash",
+            "head": "1111111111111111111111111111111111111111",
+            "main": false,
+            "action": "keep",
+            "rule": "worktree.keep",
+            "tests": [],
+            "reasons": [{ "code": "not-landed", "detail": "HEAD is not merged into refs/remotes/origin/main" }],
+            "survives": [],
+            "lock": null,
+            "attention": [],
+            "bytes": null
+          }
+        ],
+        "branches": [
+          {
+            "name": "# hash\n- dash",
+            "tip": "1111111111111111111111111111111111111111",
+            "upstream": null,
+            "state": "local-only",
+            "action": "keep",
+            "rule": "branch.local-only",
+            "archive": null,
+            "worktree": "/r/we|rd_*repo*.worktrees/-lead\u001b[2J\n# hash‮exe.txt",
+            "reasons": [{ "code": "local-only", "detail": "no upstream" }],
+            "survives": [],
+            "attention": []
+          },
+          {
+            "name": "-dash line para​zero",
+            "tip": "2222222222222222222222222222222222222222",
+            "upstream": { "ref": "refs/remotes/origin/-dash", "gone": false, "ahead": 0, "behind": 0 },
+            "state": "in-review",
+            "action": "keep",
+            "rule": "branch.in-review",
+            "archive": null,
+            "worktree": null,
+            "reasons": [{ "code": "in-review", "detail": "refs/remotes/origin/-dash exists" }],
+            "survives": [
+              { "kind": "pushed", "ref": "refs/remotes/origin/-dash", "oid": "2222222222222222222222222222222222222222" }
+            ],
+            "attention": []
+          },
+          {
+            "name": "main",
+            "tip": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "upstream": null,
+            "state": "default-branch",
+            "action": "keep",
+            "rule": "branch.default",
+            "archive": null,
+            "worktree": "/r/we|rd_*repo*",
+            "reasons": [{ "code": "default-branch", "detail": "the default branch" }],
+            "survives": [],
+            "attention": []
+          },
+          {
+            "name": "`tick`",
+            "tip": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "upstream": null,
+            "state": "landed",
+            "action": "delete",
+            "rule": "branch.landed",
+            "archive": null,
+            "worktree": "/r/we|rd_*repo*.worktrees/`tick`",
+            "reasons": [],
+            "survives": [
+              { "kind": "merged", "ref": "refs/remotes/origin/main", "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+            ],
+            "attention": []
+          },
+          {
+            "name": "*star* <b>&amp;</b>",
+            "tip": "cccccccccccccccccccccccccccccccccccccccc",
+            "upstream": null,
+            "state": "disposable",
+            "action": "delete",
+            "rule": "branch.disposable",
+            "archive": "refs/archive/*star* <b>&amp;</b>/2026-11-19T09:12:00Z",
+            "worktree": null,
+            "reasons": [],
+            "survives": [],
+            "attention": []
+          },
+          {
+            "name": "a|b\\|c``d",
+            "tip": "dddddddddddddddddddddddddddddddddddddddd",
+            "upstream": null,
+            "state": "local-only",
+            "action": "keep",
+            "rule": "branch.local-only",
+            "archive": null,
+            "worktree": null,
+            "reasons": [{ "code": "local-only", "detail": "no upstream | none" }],
+            "survives": [],
+            "attention": [{ "code": "local-only-old", "detail": "tip 9d old\nsecond line" }]
+          },
+          {
+            "name": "__init__",
+            "tip": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "upstream": { "ref": "refs/remotes/origin/__init__", "gone": false, "ahead": 0, "behind": 0 },
+            "state": "in-review",
+            "action": "keep",
+            "rule": "branch.in-review",
+            "archive": null,
+            "worktree": null,
+            "reasons": [{ "code": "in-review", "detail": "refs/remotes/origin/__init__ exists" }],
+            "survives": [],
+            "attention": []
+          },
+          {
+            "name": "[x](http://e) @someone",
+            "tip": "ffffffffffffffffffffffffffffffffffffffff",
+            "upstream": { "ref": "refs/remotes/origin/[x](http://e) @someone", "gone": true, "ahead": 0, "behind": 0 },
+            "state": "upstream-gone",
+            "action": "keep",
+            "rule": "branch.upstream-gone",
+            "archive": null,
+            "worktree": null,
+            "reasons": [{ "code": "upstream-gone", "detail": "gone \u001b[31mred" }],
+            "survives": [],
+            "attention": [{ "code": "upstream-gone", "detail": "gone \u001b[31mred" }]
+          }
+        ],
+        "backup": "/h/backups/git-archive/local/we|rd_*repo*.git"
+      },
+      "outcomes": {
+        "dry_run": true,
+        "worktrees": {},
+        "branches": {},
+        "archives": {},
+        "compares": [],
+        "rescues": []
+      }
+    }
+  ]
+}

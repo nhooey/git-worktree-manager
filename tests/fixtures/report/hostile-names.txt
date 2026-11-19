@@ -1,0 +1,24 @@
+sweep, dry run, 2026-11-19T09:12:00Z
+/r/we|rd_*repo* (refs/remotes/origin/main): archives.planned 1, attention 2, branches.delete 2,
+    branches.keep 6, worktrees.keep 2, worktrees.remove 1
+  worktree  remove  planned  worktree.remove       /r/we|rd_*repo*.worktrees/`tick`
+  worktree  keep             worktree.keep
+        /r/we|rd_*repo*.worktrees/-lead\u{1b}[2J\n# hash\u{202e}exe.txt
+      not-landed: HEAD is not merged into refs/remotes/origin/main
+  branch    keep             branch.local-only     # hash\n- dash
+      local-only: no upstream
+  branch    keep             branch.in-review      -dash\u{2028}line\u{2029}para\u{200b}zero
+      in-review: refs/remotes/origin/-dash exists
+  branch    delete  planned  branch.landed         `tick`
+  branch    delete  planned  branch.disposable     *star* <b>&amp;</b>
+      archive refs/archive/*star* <b>&amp;</b>/2026-11-19T09:12:00Z planned
+  branch    keep             branch.local-only     a|b\|c``d
+      local-only: no upstream | none
+      attention local-only-old: tip 9d old\nsecond line
+  branch    keep             branch.in-review      __init__
+      in-review: refs/remotes/origin/__init__ exists
+  branch    keep             branch.upstream-gone  [x](http://e) @someone
+      upstream-gone: gone \u{1b}[31mred
+      attention upstream-gone
+totals: archives.planned 1, attention 2, branches.delete 2, branches.keep 6, repositories 1,
+  worktrees.keep 2, worktrees.remove 1
