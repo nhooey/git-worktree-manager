@@ -89,9 +89,6 @@ pub struct RestoreArgs {
     pub format: FormatArg,
 }
 
-/// Whether `run` does the commands' work yet.
-pub const BUILT: bool = true;
-
 pub fn run(command: &Command, system: &mut impl System) -> Result<Status, Failure> {
     match command {
         Command::Write(args) => write(args, system),

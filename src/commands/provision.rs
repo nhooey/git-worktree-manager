@@ -28,9 +28,6 @@ pub struct Args {
     pub format: FormatArg,
 }
 
-/// Whether `run` does the command's work yet.
-pub const BUILT: bool = true;
-
 /// The settings a new worktree takes from the main checkout.
 pub const SETTINGS: &str = ".claude/settings.local.json";
 

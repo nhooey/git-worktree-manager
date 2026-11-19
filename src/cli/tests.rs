@@ -107,25 +107,9 @@ fn test_every_command_parses_with_its_options() {
 }
 
 #[test]
-fn test_an_unbuilt_command_says_so_and_fails() {
-    for (words, name, _) in commands::EXAMPLES.iter().filter(|(_, _, built)| !built) {
-        let mut system = Fake::new("2026-11-19T09:12:00Z".parse().expect("a time"));
-        assert_eq!(run(argv(words), &mut system), Status::Failed, "{words:?}");
-        assert_eq!(
-            system.stderr,
-            format!("{PROGRAM}: {name} is not built yet\n")
-        );
-        assert_eq!(system.stdout, "", "{words:?}");
-        assert!(system.acts.is_empty(), "{words:?}");
-    }
-}
-
-#[test]
 fn test_every_command_has_an_example() {
-    let named: std::collections::BTreeSet<_> = commands::EXAMPLES
-        .iter()
-        .map(|(_, name, _)| *name)
-        .collect();
+    let named: std::collections::BTreeSet<_> =
+        commands::EXAMPLES.iter().map(|(_, name)| *name).collect();
     assert_eq!(
         named,
         crate::model::ids::CommandName::ALL
@@ -133,7 +117,7 @@ fn test_every_command_has_an_example() {
             .copied()
             .collect()
     );
-    for (words, _, _) in commands::EXAMPLES {
+    for (words, _) in commands::EXAMPLES {
         assert!(parse(argv(words)).is_ok(), "{words:?}");
     }
 }
@@ -174,7 +158,7 @@ fn test_every_option_is_long() {
 
 #[test]
 fn test_each_command_knows_its_name_and_format() {
-    for (words, name, _) in commands::EXAMPLES {
+    for (words, name) in commands::EXAMPLES {
         let command = parse(argv(words)).expect("parses");
         assert_eq!(command.name(), name, "{words:?}");
         assert!(!command.json(), "{words:?}");

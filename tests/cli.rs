@@ -3,8 +3,8 @@
 
 mod sandbox;
 
+use git_worktree_manager::cli;
 use git_worktree_manager::names::PROGRAM;
-use git_worktree_manager::{cli, commands};
 use sandbox::Sandbox;
 
 /// Every command path, from the definition itself.
@@ -94,16 +94,6 @@ fn test_bad_usage_exits_2() {
         assert_eq!((ran.code, ran.stdout.as_str()), (2, ""), "{args:?}");
         assert!(!ran.stderr.is_empty(), "{args:?}");
     }
-}
-
-#[test]
-fn test_every_command_is_built() {
-    let unbuilt: Vec<_> = commands::EXAMPLES
-        .iter()
-        .filter(|(_, _, built)| !built)
-        .map(|(_, name, _)| name)
-        .collect();
-    assert!(unbuilt.is_empty(), "{unbuilt:?}");
 }
 
 #[test]

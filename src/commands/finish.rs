@@ -36,9 +36,6 @@ pub struct Args {
     pub format: FormatArg,
 }
 
-/// Whether `run` does the command's work yet.
-pub const BUILT: bool = true;
-
 /// Ends the worktree through the sweep's acting edge, under the sweep's
 /// lock, waited for when a sweep holds it, and prints the report; a sweep
 /// that came while it held the lock is started detached once it is done.

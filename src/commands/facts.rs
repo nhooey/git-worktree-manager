@@ -24,9 +24,6 @@ pub struct Args {
     pub format: FormatArg,
 }
 
-/// Whether `run` does the command's work yet.
-pub const BUILT: bool = true;
-
 /// What `facts` prints: the plan's two inputs read from the repository.
 #[derive(Debug, Serialize)]
 struct Printed {

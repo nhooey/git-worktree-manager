@@ -11,9 +11,6 @@ pub struct Args {
     pub format: FormatArg,
 }
 
-/// Whether `run` does the command's work yet.
-pub const BUILT: bool = true;
-
 pub fn run(args: &Args, system: &mut impl System) -> Result<Status, Failure> {
     let catalogue = catalogue::catalogue();
     match args.format.format {

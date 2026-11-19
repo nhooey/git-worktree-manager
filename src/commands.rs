@@ -45,11 +45,6 @@ impl Status {
     }
 }
 
-/// The failure of a command whose pull request hasn't landed yet.
-pub fn not_built(command: CommandName) -> Failure {
-    Failure::new(ErrorCode::NotBuilt, format!("{command} is not built yet"))
-}
-
 /// `value` as the program's JSON on standard output: pretty, with a
 /// final newline.
 pub fn print_json(system: &mut impl System, value: &impl Serialize) -> Result<(), Failure> {
@@ -82,43 +77,24 @@ pub fn failed(
     Status::Failed
 }
 
-/// Each command's shortest arguments, its name, and its module's `BUILT`,
-/// which the pull request that builds it sets; the tests expect an unbuilt
-/// command to fail saying so.
-pub const EXAMPLES: [(&[&str], CommandName, bool); 14] = [
-    (&["status"], CommandName::Status, status::BUILT),
-    (&["sweep", "--dry-run"], CommandName::Sweep, sweep::BUILT),
-    (&["finish", "wt"], CommandName::Finish, finish::BUILT),
-    (
-        &["archive", "write"],
-        CommandName::ArchiveWrite,
-        archive::BUILT,
-    ),
-    (
-        &["archive", "verify"],
-        CommandName::ArchiveVerify,
-        archive::BUILT,
-    ),
-    (
-        &["archive", "list"],
-        CommandName::ArchiveList,
-        archive::BUILT,
-    ),
-    (
-        &["archive", "restore", "fix"],
-        CommandName::ArchiveRestore,
-        archive::BUILT,
-    ),
-    (&["clean", "wt"], CommandName::Clean, clean::BUILT),
-    (&["env"], CommandName::Env, env::BUILT),
-    (&["provision"], CommandName::Provision, provision::BUILT),
-    (&["disk"], CommandName::Disk, disk::BUILT),
-    (&["rules"], CommandName::Rules, rules::BUILT),
-    (&["facts"], CommandName::Facts, facts::BUILT),
+/// Each command's shortest arguments and its name, which the tests parse.
+pub const EXAMPLES: [(&[&str], CommandName); 14] = [
+    (&["status"], CommandName::Status),
+    (&["sweep", "--dry-run"], CommandName::Sweep),
+    (&["finish", "wt"], CommandName::Finish),
+    (&["archive", "write"], CommandName::ArchiveWrite),
+    (&["archive", "verify"], CommandName::ArchiveVerify),
+    (&["archive", "list"], CommandName::ArchiveList),
+    (&["archive", "restore", "fix"], CommandName::ArchiveRestore),
+    (&["clean", "wt"], CommandName::Clean),
+    (&["env"], CommandName::Env),
+    (&["provision"], CommandName::Provision),
+    (&["disk"], CommandName::Disk),
+    (&["rules"], CommandName::Rules),
+    (&["facts"], CommandName::Facts),
     (
         &["hook", "reference-transaction", "prepared"],
         CommandName::Hook,
-        hook::BUILT,
     ),
 ];
 

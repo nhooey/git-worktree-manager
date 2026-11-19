@@ -10,30 +10,26 @@
 #[macro_use]
 mod string_enum;
 
-// The base: shared values, names, the edge and the pure functions every
-// later part calls.
+pub mod archive;
 pub mod backup;
+pub mod build_root;
 pub mod cli;
 pub mod commands;
+pub mod disk;
 pub mod environment;
+pub mod hook;
 pub mod keep;
 pub mod landed;
 pub mod locate;
 pub mod lock;
 pub mod model;
 pub mod names;
-pub mod system;
-pub mod targets;
-pub mod time;
-
-// Each later part's own module.
-pub mod archive;
-pub mod build_root;
-pub mod disk;
-pub mod hook;
 pub mod read;
 pub mod render;
 pub mod report;
 pub mod rescue;
 pub mod rules;
 pub mod sweep;
+pub mod system;
+pub mod targets;
+pub mod time;

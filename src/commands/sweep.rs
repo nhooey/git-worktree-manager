@@ -34,9 +34,6 @@ pub struct Args {
     pub format: ReportFormatArg,
 }
 
-/// Whether `run` does the command's work yet.
-pub const BUILT: bool = true;
-
 /// Sweeps, or under `--dry-run` plans, and prints the report. Exits 1
 /// when a repository couldn't be read, a step failed or an archive failed
 /// its compare, after the others are swept.

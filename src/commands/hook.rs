@@ -29,9 +29,6 @@ pub struct ReferenceTransactionArgs {
     pub state: String,
 }
 
-/// Whether `run` does the command's work yet.
-pub const BUILT: bool = true;
-
 pub fn run(command: &Command, system: &mut impl System) -> Result<Status, Failure> {
     match command {
         Command::ReferenceTransaction(args) if args.state == COMMITTED => committed(system)

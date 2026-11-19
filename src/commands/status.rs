@@ -32,9 +32,6 @@ pub struct Args {
     pub format: ReportFormatArg,
 }
 
-/// Whether `run` does the command's work yet.
-pub const BUILT: bool = true;
-
 /// Prints the dry run's report, and exits 1 when a repository couldn't be
 /// read, after the others are reported.
 pub fn run(args: &Args, system: &mut impl System) -> Result<Status, Failure> {

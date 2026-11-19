@@ -29,9 +29,6 @@ pub struct Args {
     pub format: FormatArg,
 }
 
-/// Whether `run` does the command's work yet.
-pub const BUILT: bool = true;
-
 /// Why `clean` leaves a worktree as it is: it is the main checkout, or it
 /// is locked.
 pub fn reasons(main: bool, lock: Option<&str>) -> Vec<Note<ReasonCode>> {

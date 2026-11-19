@@ -113,10 +113,6 @@ string_enum! {
         Unreadable => "unreadable",
         /// A step failed.
         StepFailed => "step-failed",
-        /// An archive failed its compare.
-        ArchiveFailed => "archive-failed",
-        /// The command's pull request hasn't landed yet.
-        NotBuilt => "not-built",
     }
 }
 

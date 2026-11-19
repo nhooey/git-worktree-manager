@@ -28,9 +28,6 @@ pub struct Args {
     pub format: FormatArg,
 }
 
-/// Whether `run` does the command's work yet.
-pub const BUILT: bool = true;
-
 /// What `env --format json` prints.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Report {
